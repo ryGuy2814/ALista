@@ -7,13 +7,14 @@ import { Calendar, Users, DollarSign, List, MapPin, Briefcase, Plus, Trash2, Edi
 
 // --- PASTE YOUR FIREBASE CONFIGURATION HERE ---
 // Replace the placeholder values with your actual Firebase credentials
+// You can find these in your .env.local file or in the Firebase Console
 const firebaseConfig = {
     apiKey: "AIzaSyBdUMEVSWUHHpy-XszBWG2hG9NhCNSPKIg",
-  authDomain: "wedding-planner-53cd1.firebaseapp.com",
-  projectId: "wedding-planner-53cd1",
-  storageBucket: "wedding-planner-53cd1.firebasestorage.app",
-  messagingSenderId: "883662831167",
-  appId: "1:883662831167:web:b99a447e8f8d3e9e6e828a"
+    authDomain: "wedding-planner-53cd1.firebaseapp.com",
+    projectId: "wedding-planner-53cd1",
+    storageBucket: "wedding-planner-53cd1.firebasestorage.app",
+    messagingSenderId: "883662831167",
+    appId: "1:883662831167:web:b99a447e8f8d3e9e6e828a"
 };
 
 // --- Main App Component ---
@@ -67,7 +68,9 @@ const App = () => {
             });
             return () => unsubscribe();
         } else {
-            // Don't log an error here, the renderContent function will handle showing the message
+            console.error("Firebase config is missing or invalid. Please paste your credentials into the firebaseConfig object in App.jsx.");
+            // To avoid the infinite spinner, we can mark auth as ready even if it fails
+            // This will allow the UI to render with an error or a prompt to configure.
             setIsAuthReady(true); 
         }
     }, []);
@@ -330,9 +333,52 @@ const Sidebar = ({ activeTab, setActiveTab, userId }) => {
 };
 
 const AIVenueScout = ({ onSaveVenue }) => {
-    // ... component implementation
-    return <div>AI Venue Scout</div>;
+    const [location, setLocation] = useState('');
+    const [budget, setBudget] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [results, setResults] = useState([]);
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        // search logic...
+    };
+
+    return (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">AI Venue Scout</h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Let AI find the perfect venue for your budget and location.</p>
+            
+            <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
+                <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Enter City or Area (e.g., 'Napa Valley, CA')" className="flex-grow p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
+                <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="Max Venue Budget (e.g., 5000)" className="w-full md:w-1/4 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
+                <button type="submit" disabled={isLoading} className="bg-pink-500 text-white px-6 py-2 rounded-md hover:bg-pink-600 flex items-center justify-center disabled:bg-pink-300">
+                    {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Find Venues'}
+                </button>
+            </form>
+
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md mb-6" role="alert">{error}</div>}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {results.map((venue, index) => (
+                    <div key={index} className="border rounded-lg p-4 flex flex-col justify-between bg-gray-50 dark:bg-gray-700/50 shadow">
+                        <div>
+                            <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400">{venue.name}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{venue.location}</p>
+                            <p className="text-sm dark:text-gray-200 mb-1"><span className="font-semibold">Aesthetic:</span> {venue.aesthetic_description}</p>
+                            <p className="text-sm dark:text-gray-200 mb-3"><span className="font-semibold">Est. Price:</span> ${venue.estimated_price?.toLocaleString()}</p>
+                        </div>
+                        <div className="flex justify-between items-center mt-4">
+                            <a href={venue.website_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm">Visit Website</a>
+                            <button onClick={() => onSaveVenue(venue)} className="bg-green-500 text-white px-3 py-1 text-sm rounded-md hover:bg-green-600 flex items-center"><Heart size={14} className="mr-1"/> Save to List</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 };
+
 
 const Dashboard = ({ stats, weddingDate, onDateChange, budgetChartData }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -379,16 +425,250 @@ const StatCard = ({ title, value, icon }) => (
     </div>
 );
 
-// Define CrudSection, GuestList, Budget, etc. as in previous versions.
-// They are omitted here for brevity but are required for the app to function fully.
+const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, children, onGenerateTasks, isGeneratingTasks }) => (
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="flex justify-between items-center mb-4">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h1>
+            <div className="flex items-center space-x-2">
+                {onGenerateTasks && (
+                     <button 
+                        onClick={onGenerateTasks} 
+                        disabled={isGeneratingTasks}
+                        className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300 disabled:cursor-not-allowed">
+                        {isGeneratingTasks ? (
+                             <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={16} className="mr-2"/> Suggest Tasks
+                            </>
+                        )}
+                    </button>
+                )}
+                <button onClick={onAdd} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 flex items-center">
+                    <Plus size={16} className="mr-2"/> Add New
+                </button>
+            </div>
+        </div>
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-gray-600 dark:text-gray-400">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        {columns.map(col => <th key={col.key} className="p-3 font-semibold">{col.label}</th>)}
+                        <th className="p-3 font-semibold">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.length > 0 ? items.map(item => (
+                        <tr key={item.id} className="border-b dark:border-gray-700">
+                            {children(item)}
+                             <td className="p-3">
+                                <button onClick={() => onEdit(item)} className="text-blue-500 hover:text-blue-700 mr-2"><Edit size={18}/></button>
+                                <button onClick={() => onDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
+                            </td>
+                        </tr>
+                    )) : <tr><td colSpan={columns.length + 1} className="text-center p-4 text-gray-500">No items yet.</td></tr>}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
 
-const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, children }) => ( <div>Crud Section Placeholder</div> )
-const GuestList = ({ guests, onAdd, onEdit, onDelete }) => ( <div>Guest List Placeholder</div> )
-const Budget = ({ budget, onAddExpense, onEditExpense, onDeleteExpense, onBudgetChange }) => ( <div>Budget Placeholder</div> )
-const TodoList = ({ todos, onAdd, onEdit, onDelete, onToggle }) => ( <div>Todo List Placeholder</div> )
-const Venues = ({ venues, onAdd, onEdit, onDelete }) => ( <div>Venues Placeholder</div> )
-const Vendors = ({ vendors, onAdd, onEdit, onDelete }) => ( <div>Vendors Placeholder</div> )
-const Modal = ({ modalType, onClose, onSubmit, formData, onChange }) => ( <div>Modal Placeholder</div> )
+const GuestList = ({ guests, onAdd, onEdit, onDelete }) => {
+    const columns = [ { key: 'name', label: 'Name'}, { key: 'status', label: 'Status' }, { key: 'notes', label: 'Notes' } ];
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Attending': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+            case 'Declined': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+            default: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+        }
+    }
+    return <CrudSection title="Guest List" items={guests} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}>
+        {guest => (
+            <>
+                <td className="p-3">{guest.name}</td>
+                <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(guest.status)}`}>{guest.status}</span></td>
+                <td className="p-3">{guest.notes}</td>
+            </>
+        )}
+    </CrudSection>;
+};
+
+const Budget = ({ budget, onAddExpense, onEditExpense, onDeleteExpense, onBudgetChange, chartData }) => {
+    const columns = [ { key: 'item', label: 'Item/Category'}, { key: 'estimated', label: 'Estimated Cost'}, { key: 'actual', label: 'Actual Cost'}, { key: 'vendor', label: 'Vendor'} ];
+    const totalEstimated = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.estimated) || 0), 0);
+    const totalActual = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0);
+    
+    return (
+        <div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <label className="block text-lg font-semibold text-gray-700 dark:text-white mb-2">Total Estimated Budget</label>
+                    <div className="flex items-center">
+                       <span className="text-2xl font-bold mr-2 text-gray-800 dark:text-white">$</span>
+                       <input type="number" value={budget.estimated || ''} onChange={onBudgetChange} className="w-full text-2xl font-bold p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
+                    </div>
+                </div>
+                <StatCard title="Total Estimated Expenses" value={`$${totalEstimated.toLocaleString()}`} icon={<DollarSign />} />
+                <StatCard title="Total Actual Spending" value={`$${totalActual.toLocaleString()}`} icon={<DollarSign />} />
+            </div>
+             <CrudSection title="Expenses" items={budget.expenses || []} columns={columns} onAdd={onAddExpense} onEdit={onEditExpense} onDelete={onDeleteExpense}>
+                {expense => (
+                    <>
+                        <td className="p-3">{expense.item} ({expense.category})</td>
+                        <td className="p-3">${parseFloat(expense.estimated || 0).toLocaleString()}</td>
+                        <td className="p-3">${parseFloat(expense.actual || 0).toLocaleString()}</td>
+                        <td className="p-3">{expense.vendor}</td>
+                    </>
+                )}
+            </CrudSection>
+        </div>
+    );
+};
+
+
+const TodoList = ({ todos, onAdd, onEdit, onDelete, onToggle, onGenerateTasks, isGeneratingTasks }) => {
+    const columns = [ { key: 'task', label: 'Task' }, { key: 'dueDate', label: 'Due Date' }, { key: 'status', label: 'Status' }];
+    return <CrudSection title="To-Do List" items={todos} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onGenerateTasks={onGenerateTasks} isGeneratingTasks={isGeneratingTasks}>
+        {todo => (
+            <>
+                <td className="p-3 flex items-center">
+                    <input type="checkbox" checked={todo.completed} onChange={() => onToggle(todo.id)} className="mr-3 h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500" />
+                    <span className={todo.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}>{todo.task}</span>
+                </td>
+                <td className="p-3">{todo.dueDate}</td>
+                <td className="p-3">{todo.completed ? <span className="text-green-500">Completed</span> : <span className="text-yellow-500">Pending</span>}</td>
+            </>
+        )}
+    </CrudSection>;
+};
+
+const Venues = ({ venues, onAdd, onEdit, onDelete }) => {
+    const columns = [ { key: 'name', label: 'Name'}, { key: 'location', label: 'Location' }, { key: 'capacity', label: 'Capacity' }, { key: 'price', label: 'Price' }, { key: 'notes', label: 'Notes' } ];
+    return <CrudSection title="Venues" items={venues} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}>
+        {venue => (
+            <>
+                <td className="p-3">{venue.name}</td>
+                <td className="p-3">{venue.location}</td>
+                <td className="p-3">{venue.capacity}</td>
+                <td className="p-3">${parseFloat(venue.price || 0).toLocaleString()}</td>
+                <td className="p-3">{venue.notes}</td>
+            </>
+        )}
+    </CrudSection>;
+};
+
+const Vendors = ({ vendors, onAdd, onEdit, onDelete }) => {
+    const columns = [ { key: 'name', label: 'Name'}, { key: 'service', label: 'Service' }, { key: 'contact', label: 'Contact' }, { key: 'price', label: 'Price' }, { key: 'notes', label: 'Notes' } ];
+    return <CrudSection title="Vendors" items={vendors} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}>
+        {vendor => (
+            <>
+                <td className="p-3">{vendor.name}</td>
+                <td className="p-3">{vendor.service}</td>
+                <td className="p-3">{vendor.contact}</td>
+                <td className="p-3">${parseFloat(vendor.price || 0).toLocaleString()}</td>
+                <td className="p-3">{vendor.notes}</td>
+            </>
+        )}
+    </CrudSection>;
+};
+
+const Modal = ({ modalType, onClose, onSubmit, formData, onChange }) => {
+    const titles = {
+        guest: 'Guest Information',
+        expense: 'Expense Details',
+        todo: 'Task Details',
+        venue: 'Venue Details',
+        vendor: 'Vendor Details',
+    };
+
+    const renderFields = () => {
+        switch (modalType) {
+            case 'guest':
+                return <>
+                    <InputField name="name" label="Name" value={formData.name || ''} onChange={onChange} required />
+                    <SelectField name="status" label="Status" value={formData.status || 'Pending'} onChange={onChange} options={['Pending', 'Attending', 'Declined']} />
+                    <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} />
+                </>;
+            case 'expense':
+                 return <>
+                    <InputField name="item" label="Item" value={formData.item || ''} onChange={onChange} required />
+                    <InputField name="category" label="Category" value={formData.category || ''} onChange={onChange} required />
+                    <InputField name="estimated" label="Estimated Cost" type="number" value={formData.estimated || ''} onChange={onChange} />
+                    <InputField name="actual" label="Actual Cost" type="number" value={formData.actual || ''} onChange={onChange} />
+                    <InputField name="vendor" label="Vendor" value={formData.vendor || ''} onChange={onChange} />
+                </>;
+            case 'todo':
+                 return <>
+                    <InputField name="task" label="Task" value={formData.task || ''} onChange={onChange} required />
+                    <InputField name="dueDate" label="Due Date" type="date" value={formData.dueDate || ''} onChange={onChange} />
+                </>;
+            case 'venue':
+                return <>
+                    <InputField name="name" label="Venue Name" value={formData.name || ''} onChange={onChange} required />
+                    <InputField name="location" label="Location" value={formData.location || ''} onChange={onChange} />
+                    <InputField name="capacity" label="Capacity" type="number" value={formData.capacity || ''} onChange={onChange} />
+                    <InputField name="price" label="Price" type="number" value={formData.price || ''} onChange={onChange} />
+                    <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} />
+                </>;
+            case 'vendor':
+                 return <>
+                    <InputField name="name" label="Vendor Name" value={formData.name || ''} onChange={onChange} required />
+                    <InputField name="service" label="Service Type" value={formData.service || ''} onChange={onChange} />
+                    <InputField name="contact" label="Contact Info" value={formData.contact || ''} onChange={onChange} />
+                    <InputField name="price" label="Price" type="number" value={formData.price || ''} onChange={onChange} />
+                    <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} />
+                </>;
+            default: return null;
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-md m-4">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{titles[modalType]}</h2>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><X size={24}/></button>
+                </div>
+                <form onSubmit={onSubmit}>
+                    <div className="space-y-4">
+                        {renderFields()}
+                    </div>
+                    <div className="mt-8 flex justify-end space-x-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-md text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Cancel</button>
+                        <button type="submit" className="px-4 py-2 rounded-md text-white bg-pink-500 hover:bg-pink-600 flex items-center"><Save size={16} className="mr-2"/> Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const InputField = ({ name, label, ...props }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+        <input id={name} name={name} {...props} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-pink-500 focus:border-pink-500" />
+    </div>
+);
+
+const TextAreaField = ({ name, label, ...props }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+        <textarea id={name} name={name} {...props} rows="3" className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-pink-500 focus:border-pink-500"></textarea>
+    </div>
+);
+
+const SelectField = ({ name, label, options, ...props }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+        <select id={name} name={name} {...props} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-pink-500 focus:border-pink-500">
+            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+    </div>
+);
+
 
 export default App;
 
