@@ -5,9 +5,7 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from 'firebase/fires
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Calendar, Users, DollarSign, List, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Moon, Sparkles, Heart } from 'lucide-react';
 
-// --- PASTE YOUR FIREBASE CONFIGURATION HERE ---
-// Replace the placeholder values with your actual Firebase credentials
-// You can find these in your .env.local file or in the Firebase Console
+// --- Firebase Configuration ---
 const firebaseConfig = {
     apiKey: "AIzaSyBdUMEVSWUHHpy-XszBWG2hG9NhCNSPKIg",
     authDomain: "wedding-planner-53cd1.firebaseapp.com",
@@ -68,9 +66,6 @@ const App = () => {
             });
             return () => unsubscribe();
         } else {
-            console.error("Firebase config is missing or invalid. Please paste your credentials into the firebaseConfig object in App.jsx.");
-            // To avoid the infinite spinner, we can mark auth as ready even if it fails
-            // This will allow the UI to render with an error or a prompt to configure.
             setIsAuthReady(true); 
         }
     }, []);
@@ -229,7 +224,35 @@ const App = () => {
         handleDataUpdate({ ...weddingData, todoList: updatedTodos });
     };
     
-    const handleGenerateTasks = async () => { /* ... */ };
+    const handleGenerateTasks = async () => {
+        setIsGeneratingTasks(true);
+        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Provide tasks for different timelines (e.g., 12 months out, 9 months out, etc.). Return the response as a JSON array of objects. Each object should have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated based on the wedding date. Create at least 15 tasks.`;
+
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json", responseSchema: { type: "ARRAY", items: { type: "OBJECT", properties: { "task": { "type": "STRING" }, "dueDate": { "type": "STRING" } } } } }
+        };
+
+        try {
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`API call failed with status: ${response.status}`);
+            const result = await response.json();
+            const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            
+            if (generatedText) {
+                const newTasks = JSON.parse(generatedText);
+                const formattedTasks = newTasks.map((task, index) => ({ id: new Date().getTime() + index, task: task.task, dueDate: task.dueDate, completed: false }));
+                handleDataUpdate({ ...weddingData, todoList: [...weddingData.todoList, ...formattedTasks] });
+            }
+        } catch (error) {
+            console.error("Error generating tasks:", error);
+        } finally {
+            setIsGeneratingTasks(false);
+        }
+    };
 
     const dashboardStats = useMemo(() => {
         const { weddingDate, guestList, budget, todoList } = weddingData;
@@ -341,7 +364,60 @@ const AIVenueScout = ({ onSaveVenue }) => {
 
     const handleSearch = async (e) => {
         e.preventDefault();
-        // search logic...
+        if (!location || !budget) {
+            setError('Please enter a location and budget.');
+            return;
+        }
+        setIsLoading(true);
+        setError(null);
+        setResults([]);
+
+        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const prompt = `Act as a wedding venue scout. Find 5 potential wedding venues in or near "${location}" with an estimated price for a wedding under $${budget}. For each venue, provide its name, location, an "aesthetic description" (e.g., rustic, modern, classic, bohemian), an estimated price as a number, and its official website URL. Use your search tool to find this information. IMPORTANT: Respond with only a valid JSON object. The JSON object should have a single key "venues" which is an array of the venue objects. Do not include any text, titles, markdown formatting, or explanations before or after the JSON object.`;
+
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            tools: [{ "google_search": {} }],
+        };
+
+        try {
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`API call failed with status: ${response.status} - ${errorBody}`);
+            }
+            
+            const result = await response.json();
+            const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (rawText) {
+                const firstBrace = rawText.indexOf('{');
+                const lastBrace = rawText.lastIndexOf('}');
+                
+                if (firstBrace !== -1 && lastBrace > firstBrace) {
+                    const jsonString = rawText.substring(firstBrace, lastBrace + 1);
+                    try {
+                        const parsedResult = JSON.parse(jsonString);
+                        setResults(parsedResult.venues || []);
+                    } catch (parseError) {
+                        console.error("JSON Parsing Error:", parseError, "--- Original Text from AI:", jsonString);
+                        setError("Failed to parse the AI's response. It returned invalid JSON.");
+                    }
+                } else {
+                     setError("Could not find a valid JSON object in the AI's response.");
+                }
+            } else {
+                setError("Could not find any venues. The AI returned an empty response.");
+            }
+        } catch (err) {
+            console.error("Error finding venues:", err);
+            setError(`An error occurred: ${err.message}`);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
