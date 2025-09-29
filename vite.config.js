@@ -5,11 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    target: 'es2020'
-  },
-  optimizeDeps: {
-    esbuildOptions: {
-      target: 'es2020'
-    }
+    target: 'esnext' // This is the key setting to fix the import.meta warnings
   }
 })
