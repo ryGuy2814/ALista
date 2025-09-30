@@ -467,7 +467,7 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
                         {/* **FIX #3: Display the venue image** */}
                         <div className="h-48 bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
                             {venue.image_url ? (
-                                <img src={venue.image_url} alt={`Aesthetic view of ${venue.name}`} className="w-full h-full object-cover" />
+                                <img src={`https://corsproxy.io/?${encodeURIComponent(venue.image_url)}`} alt={`Aesthetic view of ${venue.name}`} className="w-full h-full object-cover" />
                             ) : (
                                 <ImageIcon className="w-12 h-12 text-gray-400" />
                             )}
