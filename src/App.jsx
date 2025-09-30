@@ -3,17 +3,19 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Calendar, Users, DollarSign, List, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Moon, Sparkles, Heart } from 'lucide-react';
+import { Calendar, Users, DollarSign, List, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Moon, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon } from 'lucide-react';
 
 // --- Firebase Configuration ---
+// Note: It's best practice to store API keys in environment variables.
 const firebaseConfig = {
-    apiKey: "AIzaSyBdUMEVSWUHHpy-XszBWG2hG9NhCNSPKIg",
+    apiKey: "AIzaSyBdUMEVSWUHHpy-XszBWG2hG9NhCNSPKIg", // Replace with your actual Firebase API key
     authDomain: "wedding-planner-53cd1.firebaseapp.com",
     projectId: "wedding-planner-53cd1",
     storageBucket: "wedding-planner-53cd1.firebasestorage.app",
     messagingSenderId: "883662831167",
     appId: "1:883662831167:web:b99a447e8f8d3e9e6e828a"
 };
+
 
 // --- Main App Component ---
 const App = () => {
@@ -37,6 +39,14 @@ const App = () => {
     const [formData, setFormData] = useState({});
     const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
     
+    // **FIX #4: State for AI Scout cache**
+    const [aiScoutCache, setAiScoutCache] = useState({
+        query: { location: '', budget: '' },
+        results: [],
+        isLoading: false,
+        error: null,
+    });
+    
     // Firebase state
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
@@ -45,7 +55,7 @@ const App = () => {
 
     // --- Firebase Initialization and Auth ---
     useEffect(() => {
-        if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        if (firebaseConfig.apiKey && firebaseConfig.apiKey.startsWith("AIza")) {
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
@@ -97,21 +107,24 @@ const App = () => {
         }
     };
     
+    // **FIX #2: Update save handler to include website and imageUrl**
     const handleSaveVenueFromScout = (venue) => {
         const newVenue = {
             id: new Date().getTime(),
             name: venue.name,
             location: venue.location,
-            notes: `Aesthetic: ${venue.aesthetic_description}. Link: ${venue.website_url}`,
+            notes: `Aesthetic: ${venue.aesthetic_description || 'N/A'}.`, // Keep notes clean
             price: venue.estimated_price,
             capacity: '',
+            website: venue.website_url || '', // Add website field
+            imageUrl: venue.image_url || '',  // Add imageUrl field
         };
         const updatedData = {
             ...weddingData,
             venues: [...(weddingData.venues || []), newVenue],
         };
         handleDataUpdate(updatedData);
-        setActiveTab('venues');
+        setActiveTab('venues'); // Navigate to venues tab to see the saved item
     };
 
     // --- Event Handlers ---
@@ -226,14 +239,14 @@ const App = () => {
     
     const handleGenerateTasks = async () => {
         setIsGeneratingTasks(true);
-        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw";
+        // It's recommended to use a backend proxy to hide your API key
+        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw"; // Replace with your Gemini API key
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
         const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Provide tasks for different timelines (e.g., 12 months out, 9 months out, etc.). Return the response as a JSON array of objects. Each object should have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated based on the wedding date. Create at least 15 tasks.`;
 
         const payload = {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json", responseSchema: { type: "ARRAY", items: { type: "OBJECT", properties: { "task": { "type": "STRING" }, "dueDate": { "type": "STRING" } } } } }
+            contents: [{ parts: [{ text: prompt }] }]
         };
 
         try {
@@ -254,6 +267,7 @@ const App = () => {
         }
     };
 
+    // --- Memoized Calculations ---
     const dashboardStats = useMemo(() => {
         const { weddingDate, guestList, budget, todoList } = weddingData;
         const today = new Date();
@@ -278,13 +292,14 @@ const App = () => {
         return Object.entries(categoryTotals).map(([name, value]) => ({ name, value }));
     }, [weddingData.budget.expenses]);
 
+    // --- Content Rendering ---
     const renderContent = () => {
-        if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+        if (!firebaseConfig.apiKey || !firebaseConfig.apiKey.startsWith("AIza")) {
             return (
                 <div className="flex items-center justify-center h-full">
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md text-center">
                         <h1 className="text-2xl font-bold text-red-500 mb-4">Configuration Needed</h1>
-                        <p className="text-gray-600 dark:text-gray-300">Please paste your Firebase credentials into the `firebaseConfig` object in `src/App.jsx` to get started.</p>
+                        <p className="text-gray-600 dark:text-gray-300">Please provide your Firebase credentials in the `firebaseConfig` object to get started.</p>
                     </div>
                 </div>
             );
@@ -297,7 +312,8 @@ const App = () => {
             case 'todos': return <TodoList todos={weddingData.todoList || []} onAdd={() => openModal('todo')} onEdit={(item) => openModal('todo', item)} onDelete={(id) => handleDelete('todo', id)} onToggle={toggleTodoCompletion} onGenerateTasks={handleGenerateTasks} isGeneratingTasks={isGeneratingTasks} />;
             case 'venues': return <Venues venues={weddingData.venues || []} onAdd={() => openModal('venue')} onEdit={(item) => openModal('venue', item)} onDelete={(id) => handleDelete('venue', id)} />;
             case 'vendors': return <Vendors vendors={weddingData.vendors || []} onAdd={() => openModal('vendor')} onEdit={(item) => openModal('vendor', item)} onDelete={(id) => handleDelete('vendor', id)} />;
-            case 'ai-scout': return <AIVenueScout onSaveVenue={handleSaveVenueFromScout} />;
+            // **FIX #4: Pass cache state to the scout component**
+            case 'ai-scout': return <AIVenueScout onSaveVenue={handleSaveVenueFromScout} cache={aiScoutCache} setCache={setAiScoutCache} />;
             default: return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
         }
     };
@@ -348,38 +364,38 @@ const Sidebar = ({ activeTab, setActiveTab, userId }) => {
                 </ul>
             </div>
              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">User ID:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p>
             </div>
         </nav>
     );
 };
 
-const AIVenueScout = ({ onSaveVenue }) => {
-    const [location, setLocation] = useState('');
-    const [budget, setBudget] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [results, setResults] = useState([]);
+// **FIX #4: Refactor AIVenueScout to use parent state (cache)**
+const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
+    // Use the cache from props instead of local state
+    const { query, results, isLoading, error } = cache;
+
+    const handleQueryChange = (field, value) => {
+        setCache(prev => ({ ...prev, query: { ...prev.query, [field]: value } }));
+    };
 
     const handleSearch = async (e) => {
         e.preventDefault();
-        if (!location || !budget) {
-            setError('Please enter a location and budget.');
+        if (!query.location || !query.budget) {
+            setCache(prev => ({ ...prev, error: 'Please enter a location and budget.' }));
             return;
         }
-        setIsLoading(true);
-        setError(null);
-        setResults([]);
+        setCache(prev => ({ ...prev, isLoading: true, error: null, results: [] }));
 
-        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw";
+        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw"; // Replace with your Gemini API key
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-        const prompt = `Act as a wedding venue scout. Find 5 potential wedding venues in or near "${location}" with an estimated price for a wedding under $${budget}. For each venue, provide its name, location, an "aesthetic description" (e.g., rustic, modern, classic, bohemian), an estimated price as a number, and its official website URL. Use your search tool to find this information. IMPORTANT: Respond with only a valid JSON object. The JSON object should have a single key "venues" which is an array of the venue objects. Do not include any text, titles, markdown formatting, or explanations before or after the JSON object.`;
+        // **FIX #3: Updated prompt to ask for an image URL**
+        const prompt = `Act as a wedding venue scout. Find 5 potential wedding venues in or near "${query.location}" with an estimated price for a wedding under $${query.budget}. For each venue, provide its name, location, an "aesthetic_description", an "estimated_price" as a number, its official "website_url", and a publicly accessible, direct hotlink to a high-quality image (must end in .jpg, .png, or .webp) under the key "image_url". Do not provide a URL to a webpage or search result. IMPORTANT: Respond with only a valid JSON object. The JSON object should have a single key "venues" which is an array of the venue objects. Do not include any text, titles, markdown formatting, or explanations before or after the JSON object.`;
 
         const payload = {
-            contents: [{ parts: [{ text: prompt }] }],
-            tools: [{ "google_search": {} }],
+            contents: [{ parts: [{ text: prompt }] }]
         };
 
         try {
@@ -394,40 +410,50 @@ const AIVenueScout = ({ onSaveVenue }) => {
             const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (rawText) {
+                // Find the first '{' and the last '}' to isolate the JSON object
                 const firstBrace = rawText.indexOf('{');
                 const lastBrace = rawText.lastIndexOf('}');
-                
+
                 if (firstBrace !== -1 && lastBrace > firstBrace) {
                     const jsonString = rawText.substring(firstBrace, lastBrace + 1);
                     try {
                         const parsedResult = JSON.parse(jsonString);
-                        setResults(parsedResult.venues || []);
+                        setCache(prev => ({ ...prev, results: parsedResult.venues || [] }));
                     } catch (parseError) {
-                        console.error("JSON Parsing Error:", parseError, "--- Original Text from AI:", jsonString);
-                        setError("Failed to parse the AI's response. It returned invalid JSON.");
+                        console.error("JSON Parsing Error:", parseError, "--- Cleaned Text:", jsonString);
+                        setCache(prev => ({ ...prev, error: "Failed to parse the AI's response." }));
                     }
                 } else {
-                     setError("Could not find a valid JSON object in the AI's response.");
+                    setCache(prev => ({ ...prev, error: "Could not find a valid JSON object in the AI's response." }));
                 }
             } else {
-                setError("Could not find any venues. The AI returned an empty response.");
+                setCache(prev => ({ ...prev, error: "Could not find any venues. The AI returned an empty response." }));
             }
         } catch (err) {
             console.error("Error finding venues:", err);
-            setError(`An error occurred: ${err.message}`);
+            setCache(prev => ({ ...prev, error: `An error occurred: ${err.message}` }));
         } finally {
-            setIsLoading(false);
+            setCache(prev => ({ ...prev, isLoading: false }));
         }
+    };
+
+    // **FIX #1: Helper to ensure URL has a protocol for the href attribute**
+    const ensureProtocol = (url) => {
+        if (!url) return '#';
+        if (!/^https?:\/\//i.test(url)) {
+            return `https://${url}`;
+        }
+        return url;
     };
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">AI Venue Scout</h1>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">AI Venue Scout 🤖</h1>
             <p className="text-gray-600 dark:text-gray-400 mb-6">Let AI find the perfect venue for your budget and location.</p>
             
             <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
-                <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Enter City or Area (e.g., 'Napa Valley, CA')" className="flex-grow p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
-                <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="Max Venue Budget (e.g., 5000)" className="w-full md:w-1/4 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
+                <input type="text" value={query.location} onChange={e => handleQueryChange('location', e.target.value)} placeholder="Enter City or Area (e.g., 'Napa Valley, CA')" className="flex-grow p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
+                <input type="number" value={query.budget} onChange={e => handleQueryChange('budget', e.target.value)} placeholder="Max Venue Budget (e.g., 5000)" className="w-full md:w-1/4 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" />
                 <button type="submit" disabled={isLoading} className="bg-pink-500 text-white px-6 py-2 rounded-md hover:bg-pink-600 flex items-center justify-center disabled:bg-pink-300">
                     {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Find Venues'}
                 </button>
@@ -437,16 +463,28 @@ const AIVenueScout = ({ onSaveVenue }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {results.map((venue, index) => (
-                    <div key={index} className="border rounded-lg p-4 flex flex-col justify-between bg-gray-50 dark:bg-gray-700/50 shadow">
-                        <div>
+                    <div key={index} className="border rounded-lg flex flex-col justify-between bg-gray-50 dark:bg-gray-700/50 shadow overflow-hidden">
+                        {/* **FIX #3: Display the venue image** */}
+                        <div className="h-48 bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
+                            {venue.image_url ? (
+                                <img src={venue.image_url} alt={`Aesthetic view of ${venue.name}`} className="w-full h-full object-cover" />
+                            ) : (
+                                <ImageIcon className="w-12 h-12 text-gray-400" />
+                            )}
+                        </div>
+                        <div className="p-4 flex-grow flex flex-col">
                             <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400">{venue.name}</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{venue.location}</p>
                             <p className="text-sm dark:text-gray-200 mb-1"><span className="font-semibold">Aesthetic:</span> {venue.aesthetic_description}</p>
                             <p className="text-sm dark:text-gray-200 mb-3"><span className="font-semibold">Est. Price:</span> ${venue.estimated_price?.toLocaleString()}</p>
-                        </div>
-                        <div className="flex justify-between items-center mt-4">
-                            <a href={venue.website_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm">Visit Website</a>
-                            <button onClick={() => onSaveVenue(venue)} className="bg-green-500 text-white px-3 py-1 text-sm rounded-md hover:bg-green-600 flex items-center"><Heart size={14} className="mr-1"/> Save to List</button>
+                            <div className="flex-grow"></div>
+                            <div className="flex justify-between items-center mt-4 border-t pt-3 dark:border-gray-600">
+                                {/* **FIX #1: Use the ensureProtocol helper for the link** */}
+                                <a href={ensureProtocol(venue.website_url)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm flex items-center">
+                                    <LinkIcon size={14} className="mr-1"/> Visit Website
+                                </a>
+                                <button onClick={() => onSaveVenue(venue)} className="bg-green-500 text-white px-3 py-1 text-sm rounded-md hover:bg-green-600 flex items-center"><Heart size={14} className="mr-1"/> Save to List</button>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -507,21 +545,21 @@ const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, children,
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h1>
             <div className="flex items-center space-x-2">
                 {onGenerateTasks && (
-                     <button 
-                        onClick={onGenerateTasks} 
-                        disabled={isGeneratingTasks}
-                        className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300 disabled:cursor-not-allowed">
-                        {isGeneratingTasks ? (
-                             <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                Generating...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles size={16} className="mr-2"/> Suggest Tasks
-                            </>
-                        )}
-                    </button>
+                       <button 
+                            onClick={onGenerateTasks} 
+                            disabled={isGeneratingTasks}
+                            className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300 disabled:cursor-not-allowed">
+                            {isGeneratingTasks ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={16} className="mr-2"/> Suggest Tasks
+                                </>
+                            )}
+                        </button>
                 )}
                 <button onClick={onAdd} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 flex items-center">
                     <Plus size={16} className="mr-2"/> Add New
@@ -621,14 +659,41 @@ const TodoList = ({ todos, onAdd, onEdit, onDelete, onToggle, onGenerateTasks, i
     </CrudSection>;
 };
 
+// **FIX #2: Update Venues table to show image and clickable name**
 const Venues = ({ venues, onAdd, onEdit, onDelete }) => {
-    const columns = [ { key: 'name', label: 'Name'}, { key: 'location', label: 'Location' }, { key: 'capacity', label: 'Capacity' }, { key: 'price', label: 'Price' }, { key: 'notes', label: 'Notes' } ];
+    const columns = [ { key: 'preview', label: 'Preview'}, { key: 'name', label: 'Name'}, { key: 'location', label: 'Location' }, { key: 'price', label: 'Price' }, { key: 'notes', label: 'Notes' } ];
+    
+    // Helper to ensure URL has a protocol for the href attribute
+    const ensureProtocol = (url) => {
+        if (!url) return '#';
+        if (!/^https?:\/\//i.test(url)) {
+            return `https://${url}`;
+        }
+        return url;
+    };
+    
     return <CrudSection title="Venues" items={venues} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete}>
         {venue => (
             <>
-                <td className="p-3">{venue.name}</td>
+                <td className="p-3">
+                    <div className="w-16 h-12 bg-gray-200 dark:bg-gray-600 rounded-md flex items-center justify-center">
+                       {venue.imageUrl ? (
+                           <img src={venue.imageUrl} alt={venue.name} className="w-full h-full object-cover rounded-md"/>
+                       ) : (
+                           <ImageIcon className="w-6 h-6 text-gray-400"/>
+                       )}
+                    </div>
+                </td>
+                <td className="p-3 font-semibold">
+                    {venue.website ? (
+                        <a href={ensureProtocol(venue.website)} target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline">
+                            {venue.name}
+                        </a>
+                    ) : (
+                        <span className="text-gray-800 dark:text-gray-200">{venue.name}</span>
+                    )}
+                </td>
                 <td className="p-3">{venue.location}</td>
-                <td className="p-3">{venue.capacity}</td>
                 <td className="p-3">${parseFloat(venue.price || 0).toLocaleString()}</td>
                 <td className="p-3">{venue.notes}</td>
             </>
@@ -681,10 +746,13 @@ const Modal = ({ modalType, onClose, onSubmit, formData, onChange }) => {
                     <InputField name="task" label="Task" value={formData.task || ''} onChange={onChange} required />
                     <InputField name="dueDate" label="Due Date" type="date" value={formData.dueDate || ''} onChange={onChange} />
                 </>;
+            // **FIX #2: Add Website and Image URL fields to the Venue modal**
             case 'venue':
                 return <>
                     <InputField name="name" label="Venue Name" value={formData.name || ''} onChange={onChange} required />
                     <InputField name="location" label="Location" value={formData.location || ''} onChange={onChange} />
+                    <InputField name="website" label="Website URL" placeholder="https://example.com" value={formData.website || ''} onChange={onChange} />
+                    <InputField name="imageUrl" label="Image URL" placeholder="https://example.com/image.jpg" value={formData.imageUrl || ''} onChange={onChange} />
                     <InputField name="capacity" label="Capacity" type="number" value={formData.capacity || ''} onChange={onChange} />
                     <InputField name="price" label="Price" type="number" value={formData.price || ''} onChange={onChange} />
                     <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} />
@@ -747,4 +815,3 @@ const SelectField = ({ name, label, options, ...props }) => (
 
 
 export default App;
-
