@@ -536,8 +536,8 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
         }
         setCache(prev => ({ ...prev, isLoading: true, error: null, results: [] }));
 
-        const apiKey = "AIzaSyBSN5DOIVYsoNRdnCZjFTewLfxZ_6CJiRw"; // Replace with your Gemini API key
-        const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const apiKey = "AIzaSyBEzh4YErzlz5m1J2eM8zhTbNhkjUR7_v0"; // Replace with your Gemini API key
+        const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
         
         const prompt = `Act as a wedding venue scout. Find 5 potential wedding venues in or near "${query.location}" with an estimated price for a wedding under $${query.budget}. For each venue, provide its name, location, an "aesthetic_description", an "estimated_price" as a number, its official "website_url", and a publicly accessible, direct hotlink to a high-quality image (must end in .jpg, .png, or .webp) under the key "image_url". Do not provide a URL to a webpage or search result. IMPORTANT: Respond with only a valid JSON object. The JSON object should have a single key "venues" which is an array of the venue objects. Do not include any text, titles, markdown formatting, or explanations before or after the JSON object.`;
 
