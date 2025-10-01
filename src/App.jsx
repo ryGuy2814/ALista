@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Calendar, Users, DollarSign, List, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Palette } from 'lucide-react';
+import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Palette } from 'lucide-react';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -46,6 +46,12 @@ const App = () => {
     const [db, setDb] = useState(null);
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
+    const [seatingPlan, setSeatingPlan] = useState({
+    'Table 1': [],
+    'Table 2': [],
+    'Table 3': [],
+    'Table 4': [],
+    });
 
     // --- Firebase Initialization and Auth ---
     useEffect(() => {
@@ -100,7 +106,39 @@ const App = () => {
         catch (error) { console.error("Error updating document:", error); }
     };
     
-    const startWeddingPlanning = () => { setAppMode('planning'); };
+    const startWeddingPlanning = (dreamData = null) => {
+    // Start with the default wedding data
+    let initialWeddingData = {
+        weddingDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        guestList: [],
+        budget: { estimated: 10000, expenses: [] },
+        todoList: [],
+        venues: [],
+        vendors: [],
+    };
+
+    if (dreamData) {
+        console.log("Importing dream data:", dreamData);
+        // Overwrite the budget with the one from the simulator
+        initialWeddingData.budget.estimated = dreamData.budget;
+
+        // Add a personalized to-do item based on the theme
+        const themeTodo = {
+            id: new Date().getTime(),
+            task: `Find vendors that match our "${dreamData.theme}" theme!`,
+            completed: false,
+            // Set due date for 1 week from today
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        };
+        initialWeddingData.todoList.unshift(themeTodo); // Add to the beginning of the list
+    }
+    
+    // Save this new combined data to Firebase under the 'weddings' collection
+    handleDataUpdate(initialWeddingData, 'planning');
+    
+    // Finally, switch to the main planner mode
+    setAppMode('planning');
+};
     
     // --- Event Handlers for Wedding Planner ---
     const openModal = (type, item = null) => { setModal(type); if (item) { setEditItemId(item.id); setFormData(item); } else { setEditItemId(null); setFormData({}); } };
@@ -112,7 +150,50 @@ const App = () => {
     const handleBudgetChange = (e) => { handleDataUpdate({ ...weddingData, budget: {...weddingData.budget, estimated: parseFloat(e.target.value)} }, 'planning'); }
     const toggleTodoCompletion = (id) => { const updatedTodos = weddingData.todoList.map(todo => todo.id === id ? { ...todo, completed: !todo.completed } : todo ); handleDataUpdate({ ...weddingData, todoList: updatedTodos }, 'planning'); };
     const handleSaveVenueFromScout = (venue) => { const newVenue = { id: new Date().getTime(), name: venue.name, location: venue.location, notes: `Aesthetic: ${venue.aesthetic_description || 'N/A'}.`, price: venue.estimated_price, capacity: '', website: venue.website_url || '', imageUrl: venue.image_url || '' }; handleDataUpdate({ ...weddingData, venues: [...(weddingData.venues || []), newVenue] }, 'planning'); setActiveTab('venues'); };
-    const handleGenerateTasks = async () => { /* ... handleGenerateTasks logic ... */ };
+    const handleGenerateTasks = async () => {
+    setIsGeneratingTasks(true);
+    // Your new, correct API key
+    const apiKey = "AIzaSyBEzh4YErzlz5m1J2eM8zhTbNhkjUR7_v0"; 
+    // The stable 'gemini-1.5-flash-001' model name
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+
+    const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Return the response as a valid JSON array of objects. Each object must have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated relative to the wedding date. Create at least 15 tasks. Ensure the entire response is only the JSON array, with no extra text or markdown formatting.`;
+
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errorBody = await response.json();
+            console.error("API Error Body:", errorBody);
+            throw new Error(`API call failed with status: ${response.status}`);
+        }
+        const result = await response.json();
+        const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (generatedText) {
+            const newTasks = JSON.parse(generatedText);
+            const formattedTasks = newTasks.map((task, index) => ({
+                id: new Date().getTime() + index,
+                task: task.task,
+                dueDate: task.dueDate,
+                completed: false
+            }));
+            handleDataUpdate({ ...weddingData, todoList: [...(weddingData.todoList || []), ...formattedTasks] }, 'planning');
+        }
+    } catch (error) {
+        console.error("Error generating tasks:", error);
+    } finally {
+        setIsGeneratingTasks(false);
+    }
+};
 
     // --- Memoized Calculations ---
     const dashboardStats = useMemo(() => { const { weddingDate, guestList, budget, todoList } = weddingData; const today = new Date(); const wDate = new Date(weddingDate); const countdown = Math.ceil((wDate - today) / (1000 * 60 * 60 * 24)); const guestsAttending = (guestList || []).filter(g => g.status === 'Attending').length; const totalGuests = (guestList || []).length; const actualSpending = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0); const tasksCompleted = (todoList || []).filter(t => t.completed).length; const totalTasks = (todoList || []).length; return { countdown, guestsAttending, totalGuests, actualSpending, estimatedBudget: budget.estimated, tasksCompleted, totalTasks }; }, [weddingData]);
@@ -120,16 +201,18 @@ const App = () => {
 
     // --- Content Renderer for 'planning' mode ---
     const renderContent = () => {
-        switch (activeTab) {
-            case 'dashboard': return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
-            case 'guests': return <GuestList guests={weddingData.guestList || []} onAdd={() => openModal('guest')} onEdit={(item) => openModal('guest', item)} onDelete={(id) => handleDelete('guest', id)} />;
-            case 'budget': return <Budget budget={weddingData.budget || {}} onAddExpense={() => openModal('expense')} onEditExpense={(item) => openModal('expense', item)} onDeleteExpense={(id) => handleDelete('expense', id)} onBudgetChange={handleBudgetChange} chartData={budgetChartData}/>;
-            case 'todos': return <TodoList todos={weddingData.todoList || []} onAdd={() => openModal('todo')} onEdit={(item) => openModal('todo', item)} onDelete={(id) => handleDelete('todo', id)} onToggle={toggleTodoCompletion} onGenerateTasks={handleGenerateTasks} isGeneratingTasks={isGeneratingTasks} />;
-            case 'venues': return <Venues venues={weddingData.venues || []} onAdd={() => openModal('venue')} onEdit={(item) => openModal('venue', item)} onDelete={(id) => handleDelete('venue', id)} />;
-            case 'vendors': return <Vendors vendors={weddingData.vendors || []} onAdd={() => openModal('vendor')} onEdit={(item) => openModal('vendor', item)} onDelete={(id) => handleDelete('vendor', id)} />;
-            case 'ai-scout': return <AIVenueScout onSaveVenue={handleSaveVenueFromScout} cache={aiScoutCache} setCache={setAiScoutCache} />;
-            default: return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
-        }
+    switch (activeTab) {
+        case 'dashboard': return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
+        case 'guests': return <GuestList guests={weddingData.guestList || []} onAdd={() => openModal('guest')} onEdit={(item) => openModal('guest', item)} onDelete={(id) => handleDelete('guest', id)} />;
+        // NEW CASE ADDED HERE
+        case 'seating': return <SeatingChart guests={weddingData.guestList || []} plan={seatingPlan} setPlan={setSeatingPlan} />;
+        case 'budget': return <Budget budget={weddingData.budget || {}} onAddExpense={() => openModal('expense')} onEditExpense={(item) => openModal('expense', item)} onDeleteExpense={(id) => handleDelete('expense', id)} onBudgetChange={handleBudgetChange} chartData={budgetChartData}/>;
+        case 'todos': return <TodoList todos={weddingData.todoList || []} onAdd={() => openModal('todo')} onEdit={(item) => openModal('todo', item)} onDelete={(id) => handleDelete('todo', id)} onToggle={toggleTodoCompletion} onGenerateTasks={handleGenerateTasks} isGeneratingTasks={isGeneratingTasks} />;
+        case 'venues': return <Venues venues={weddingData.venues || []} onAdd={() => openModal('venue')} onEdit={(item) => openModal('venue', item)} onDelete={(id) => handleDelete('venue', id)} />;
+        case 'vendors': return <Vendors vendors={weddingData.vendors || []} onAdd={() => openModal('vendor')} onEdit={(item) => openModal('vendor', item)} onDelete={(id) => handleDelete('vendor', id)} />;
+        case 'ai-scout': return <AIVenueScout onSaveVenue={handleSaveVenueFromScout} cache={aiScoutCache} setCache={setAiScoutCache} />;
+        default: return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
+    }
     };
     
     // --- Main Render Function ---
@@ -239,27 +322,35 @@ const ProposalPlanner = ({ plan, onUpdate, onComplete }) => {
 
 // --- NEW COMPONENT: Wedding Simulator (FULLY BUILT) ---
 // --- UPDATED COMPONENT: Wedding Simulator (with Virtual Stylist) ---
+// --- FINAL COMPONENT: Wedding Simulator (with Forecaster) ---
 const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
-    // A more structured initial state for the dream object
     const currentDream = {
         theme: 'Modern Romantic',
         palette: ['#F7CAC9', '#92A8D1', '#B5EAD7', '#C7CEEA'],
         budget: 25000,
-        // NEW: Add styling state
-        styles: {
-            brideDress: 'A-Line',
-            bridesmaidColor: '#F7CAC9',
-            groomSuit: '#1f2937', // dark gray
-        },
-        ...dream // Overwrite defaults with any saved data
+        styles: { brideDress: 'A-Line', bridesmaidColor: '#F7CAC9', groomSuit: '#1f2937' },
+        ...dream 
     };
+
+    // --- Data for Cost Estimation (Hard-coded for POC) ---
+    const costData = {
+        themes: { 'Modern Romantic': 15000, 'Rustic Bohemian': 12000, 'Classic Elegance': 20000, 'Tropical Getaway': 25000 },
+        dressStyles: { 'A-Line': 2000, 'Ballgown': 3500, 'Mermaid': 3000, 'Sheath': 1800 }
+    };
+    
+    // --- Real-time Calculation for the Forecaster ---
+    const estimatedDreamCost = useMemo(() => {
+        const themeCost = costData.themes[currentDream.theme] || 15000;
+        const dressCost = costData.dressStyles[currentDream.styles.brideDress] || 2000;
+        // In a real app, you'd add costs for venue, guests, catering etc.
+        return themeCost + dressCost;
+    }, [currentDream.theme, currentDream.styles.brideDress]);
 
     const handleUpdate = (field, value) => {
         const updatedDream = { ...currentDream, [field]: value };
         onUpdate(updatedDream, 'simulator');
     };
     
-    // NEW: Handler specifically for style updates
     const handleStyleUpdate = (partyMember, value) => {
         const updatedStyles = { ...currentDream.styles, [partyMember]: value };
         handleUpdate('styles', updatedStyles);
@@ -267,11 +358,8 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
 
     const themes = [ { name: 'Modern Romantic', icon: '💖' }, { name: 'Rustic Bohemian', icon: '🌿' }, { name: 'Classic Elegance', icon: '💎' }, { name: 'Tropical Getaway', icon: '🌴' }, ];
     const colorOptions = { '#e11d48': ['#e11d48', '#fecdd3', '#fde68a', '#f3f4f6'], '#2563eb': ['#2563eb', '#bfdbfe', '#93c5fd', '#ffffff'], '#16a34a': ['#16a34a', '#dcfce7', '#bbf7d0', '#f0fdf4'], '#d946ef': ['#d946ef', '#fae8ff', '#f5d0fe', '#e9d5ff'], '#f97316': ['#f97316', '#ffedd5', '#fed7aa', '#fff7ed'], };
-    
-    // NEW: Data for the stylist
     const dressStyles = ['A-Line', 'Ballgown', 'Mermaid', 'Sheath'];
     const suitColors = { Navy: '#1e3a8a', Charcoal: '#374151', Black: '#111827', Tan: '#d2b48c' };
-
 
     return (
         <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 font-sans">
@@ -280,7 +368,7 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
                     <Wand2 size={28} className="text-purple-500"/>
                     <h1 className="ml-3 text-2xl font-bold text-gray-800 dark:text-white">Dream Wedding Simulator</h1>
                 </div>
-                <button onClick={onComplete} className="bg-pink-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-pink-600 transition-colors flex items-center">
+                <button onClick={() => onComplete(currentDream)} className="bg-pink-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-pink-600 transition-colors flex items-center">
                     Let's Start Planning!
                 </button>
             </header>
@@ -288,19 +376,16 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
             <main className="flex-1 p-6 md:p-10 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* --- Left Column: Controls --- */}
                 <div className="lg:col-span-1 space-y-8">
-                    {/* Theme Selector */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                         <h2 className="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-200">1. Choose Your Theme</h2>
                         <div className="grid grid-cols-2 gap-4">{themes.map(theme => ( <button key={theme.name} onClick={() => handleUpdate('theme', theme.name)} className={`p-4 border-2 rounded-lg text-center transition-colors ${currentDream.theme === theme.name ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'}`}><span className="text-3xl">{theme.icon}</span><p className="font-semibold mt-2 text-gray-800 dark:text-gray-200">{theme.name}</p></button>))}</div>
                     </div>
 
-                    {/* Color Palette Selector */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                         <h2 className="text-xl font-semibold mb-4 text-gray-700 dark:text-gray-200">2. Pick a Primary Color</h2>
                         <div className="flex flex-wrap gap-4">{Object.entries(colorOptions).map(([baseColor, palette]) => ( <button key={baseColor} onClick={() => handleUpdate('palette', palette)} className={`w-12 h-12 rounded-full border-4 transition-transform hover:scale-110 ${currentDream.palette[0] === baseColor ? 'border-purple-500' : 'border-transparent'}`} style={{ backgroundColor: baseColor }}></button>))}</div>
                     </div>
 
-                     {/* Budget Input */}
                      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                         <h2 className="text-xl font-semibold mb-2 text-gray-700 dark:text-gray-200">3. Set a Dream Budget</h2>
                          <div className="flex items-center mt-4">
@@ -312,21 +397,26 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
 
                 {/* --- Right Column: Vision Board & Stylist --- */}
                 <div className="lg:col-span-2 space-y-8">
-                    {/* Vision Board Preview */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
                         <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white border-b pb-4 dark:border-gray-600">Your Dream Wedding Vision</h2>
-                        <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div><p className="text-sm font-medium text-gray-500">THEME</p><p className="text-2xl font-semibold text-purple-600 dark:text-purple-400">{currentDream.theme}</p></div>
-                            <div><p className="text-sm font-medium text-gray-500">COLOR PALETTE</p><div className="flex space-x-4 mt-2">{currentDream.palette.map((color, index) => ( <div key={index} className="w-16 h-16 rounded-lg shadow-inner" style={{ backgroundColor: color }}></div>))}</div></div>
-                            <div><p className="text-sm font-medium text-gray-500">BUDGET</p><p className="text-4xl font-bold text-gray-800 dark:text-white">${currentDream.budget.toLocaleString()}</p></div>
+                            <div><p className="text-sm font-medium text-gray-500">COLOR PALETTE</p><div className="flex space-x-4 mt-2">{currentDream.palette.map((color, index) => ( <div key={index} className="w-12 h-12 rounded-lg shadow-inner" style={{ backgroundColor: color }}></div>))}</div></div>
                         </div>
                     </div>
 
-                    {/* --- NEW: Virtual Stylist Section --- */}
+                    {/* --- NEW: Budget Forecaster --- */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+                        <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Budget Forecaster</h2>
+                        <div className="flex justify-between items-center text-lg">
+                            <div className="text-gray-500">Your Dream Budget: <span className="font-bold text-gray-800 dark:text-white">${currentDream.budget.toLocaleString()}</span></div>
+                            <div className="text-gray-500">Estimated Dream Cost: <span className="font-bold text-green-500">${estimatedDreamCost.toLocaleString()}</span></div>
+                        </div>
+                        <BudgetGauge currentValue={estimatedDreamCost} maxValue={currentDream.budget} />
+                    </div>
+
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
                         <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white border-b pb-4 dark:border-gray-600">Virtual Wedding Party Stylist</h2>
-                        
-                        {/* Stylist Controls */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                             <div>
                                 <label className="block text-sm font-medium text-gray-500 mb-2">Bride's Dress Style</label>
@@ -343,8 +433,6 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
                                 <div className="flex space-x-2">{Object.entries(suitColors).map(([name, color]) => ( <button key={name} title={name} onClick={() => handleStyleUpdate('groomSuit', color)} className={`w-8 h-8 rounded-full border-2 ${currentDream.styles.groomSuit === color ? 'border-purple-500' : 'border-transparent'}`} style={{backgroundColor: color}}></button>))}</div>
                             </div>
                         </div>
-
-                        {/* Visual Preview */}
                         <div className="bg-gray-100 dark:bg-gray-700/50 p-6 rounded-lg flex justify-center items-end space-x-4 h-64">
                             <PartyMemberIcon person="bridesmaid" color={currentDream.styles.bridesmaidColor} />
                             <PartyMemberIcon person="bride" style={currentDream.styles.brideDress} />
@@ -354,6 +442,22 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
                     </div>
                 </div>
             </main>
+        </div>
+    );
+};
+
+// --- NEW HELPER COMPONENT for the Budget Forecaster ---
+const BudgetGauge = ({ currentValue, maxValue }) => {
+    const percentage = Math.min((currentValue / maxValue) * 100, 100);
+    let barColor = 'bg-green-500';
+    if (percentage > 75) barColor = 'bg-yellow-500';
+    if (percentage > 95) barColor = 'bg-red-500';
+
+    return (
+        <div className="mt-4">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                <div className={`${barColor} h-4 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+            </div>
         </div>
     );
 };
@@ -378,7 +482,45 @@ const PartyMemberIcon = ({ person, style, color }) => {
 const PlannerNavButton = ({ label, icon, isActive, onClick }) => ( <button onClick={onClick} className={`flex items-center justify-center lg:justify-start p-4 rounded-lg text-lg transition-colors duration-200 ${ isActive ? 'bg-pink-500/20 text-pink-400' : 'text-gray-300 hover:bg-gray-700' }`} > {icon} <span className="hidden lg:block ml-4">{label}</span> </button> );
 const RingSizerGuide = () => ( <div> <h2 className="text-3xl font-bold mb-4 text-gray-100">Stealthy Ring Sizing 💍</h2> <p className="text-lg text-gray-400 mb-8">Here are a few clever ways to find out their ring size without spoiling the surprise.</p> <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> <div className="bg-gray-800 p-6 rounded-lg"> <h3 className="text-xl font-semibold text-pink-400 mb-2">The "Borrow" Method</h3> <p className="text-gray-300">"Borrow" a ring they already own (make sure it's one they wear on the correct finger!). Take it to a jeweler or use a printable ring sizer chart online to measure it. Return it before they notice!</p> </div> <div className="bg-gray-800 p-6 rounded-lg"> <h3 className="text-xl font-semibold text-pink-400 mb-2">The "Impression" Trick</h3> <p className="text-gray-300">If you can't take the ring, press it into a bar of soap or a piece of clay to create an impression. You can then take the impression to be measured.</p> </div> <div className="bg-gray-800 p-6 rounded-lg"> <h3 className="text-xl font-semibold text-pink-400 mb-2">Recruit an Accomplice</h3> <p className="text-gray-300">Enlist one of their close friends or family members. The friend can suggest a "fun" trip to a jewelry store to try on rings, and then secretly report the size back to you.</p> </div> <div className="bg-gray-800 p-6 rounded-lg"> <h3 className="text-xl font-semibold text-pink-400 mb-2">The String Method (Risky!)</h3> <p className="text-gray-300">While they are sleeping, gently wrap a piece of string around their ring finger and mark where it overlaps. This is less accurate but can work in a pinch. Measure the string against a ruler in millimeters.</p> </div> </div> </div> );
 const IdeaGenerator = () => { const [filters, setFilters] = useState({ personality: 'any', budget: 'any' }); const ideas = [ { id: 1, title: 'Romantic Dinner Proposal', description: 'Arrange a surprise dinner at their favorite restaurant or cook a gourmet meal at home. Propose over dessert.', personality: 'romantic', budget: 'medium' }, { id: 2, title: 'Scenic Hike Proposal', description: 'Plan a hike to a location with a breathtaking view. At the summit, get down on one knee.', personality: 'adventurous', budget: 'low' }, { id: 3, title: 'Cozy At-Home Proposal', description: 'Decorate your living room with photos, candles, and flowers. Propose in the comfort of your shared space during a quiet evening.', personality: 'homebody', budget: 'low' }, { id: 4, title: 'Destination Proposal', description: 'Plan a weekend getaway to a meaningful or beautiful location. Propose at sunset on the beach or with a city skyline in the background.', personality: 'adventurous', budget: 'high' }, { id: 5, title: 'Flash Mob Proposal', description: 'If your partner loves grand gestures, organize a surprise flash mob with friends and family that ends with your proposal.', personality: 'extrovert', budget: 'high' }, { id: 6, title: 'Photo Booth Surprise', description: 'While taking photos in a photo booth, pull out the ring between snaps. The photo strip will capture their genuine surprise.', personality: 'romantic', budget: 'low' }, { id: 7, 'title': 'Scavenger Hunt', 'description': 'Create a scavenger hunt with clues that lead to different meaningful spots in your relationship, with the final clue leading to you with the ring.', 'personality': 'adventurous', 'budget': 'medium' } ]; const filteredIdeas = ideas.filter(idea => (filters.personality === 'any' || idea.personality === filters.personality) && (filters.budget === 'any' || idea.budget === filters.budget) ); return ( <div> <h2 className="text-3xl font-bold mb-4 text-gray-100">Proposal Idea Generator ✨</h2> <p className="text-lg text-gray-400 mb-6">Find the perfect idea to match their personality and your budget.</p> <div className="flex space-x-4 mb-8 bg-gray-800 p-4 rounded-lg"> <div className="flex-1"> <label className="block text-sm font-medium text-gray-300 mb-1">Personality Type</label> <select value={filters.personality} onChange={e => setFilters({...filters, personality: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"> <option value="any">Any</option> <option value="romantic">Romantic</option> <option value="adventurous">Adventurous</option> <option value="homebody">Homebody</option> <option value="extrovert">Extrovert</option> </select> </div> <div className="flex-1"> <label className="block text-sm font-medium text-gray-300 mb-1">Budget Level</label> <select value={filters.budget} onChange={e => setFilters({...filters, budget: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"> <option value="any">Any</option> <option value="low">Low ($)</option> <option value="medium">Medium ($$)</option> <option value="high">High ($$$)</option> </select> </div> </div> <div className="space-y-4"> {filteredIdeas.map(idea => ( <div key={idea.id} className="bg-gray-800 p-6 rounded-lg"> <h3 className="text-xl font-semibold text-pink-400 mb-2">{idea.title}</h3> <p className="text-gray-300">{idea.description}</p> </div> ))} </div> </div> ); };
-const Sidebar = ({ activeTab, setActiveTab, userId }) => { const navItems = [ { id: 'dashboard', icon: <Sun className="w-6 h-6"/>, label: 'Dashboard' }, { id: 'guests', icon: <Users className="w-6 h-6"/>, label: 'Guest List' }, { id: 'budget', icon: <DollarSign className="w-6 h-6"/>, label: 'Budget' }, { id: 'todos', icon: <List className="w-6 h-6"/>, label: 'To-Do List' }, { id: 'venues', icon: <MapPin className="w-6 h-6"/>, label: 'Venues' }, { id: 'vendors', icon: <Briefcase className="w-6 h-6"/>, label: 'Vendors' }, { id: 'ai-scout', icon: <Sparkles className="w-6 h-6"/>, label: 'AI Venue Scout' }, ]; return ( <nav className="w-20 lg:w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col justify-between"> <div> <div className="flex items-center justify-center lg:justify-start p-4 lg:p-6 border-b border-gray-200 dark:border-gray-700"> <img src="https://placehold.co/40x40/f472b6/ffffff?text=WP" alt="Logo" className="rounded-full"/> <h1 className="hidden lg:block ml-4 text-xl font-bold text-pink-500">Wedding Planner</h1> </div> <ul> {navItems.map(item => ( <li key={item.id} className="mt-2"> <a href="#" onClick={(e) => { e.preventDefault(); setActiveTab(item.id); }} className={`flex items-center justify-center lg:justify-start p-4 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900 hover:text-pink-500 transition-colors duration-200 ${activeTab === item.id ? 'bg-pink-100 dark:bg-pink-900/50 text-pink-500 border-r-4 border-pink-500' : ''}`}> {item.icon} <span className="hidden lg:block ml-4">{item.label}</span> </a> </li> ))} </ul> </div> <div className="p-4 border-t border-gray-200 dark:border-gray-700"> <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p> <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p> </div> </nav> ); };
+const Sidebar = ({ activeTab, setActiveTab, userId }) => {
+    const navItems = [
+        { id: 'dashboard', icon: <Sun className="w-6 h-6"/>, label: 'Dashboard' },
+        { id: 'guests', icon: <Users className="w-6 h-6"/>, label: 'Guest List' },
+        // NEW ITEM ADDED HERE
+        { id: 'seating', icon: <Grid className="w-6 h-6"/>, label: 'Seating Chart' },
+        { id: 'budget', icon: <DollarSign className="w-6 h-6"/>, label: 'Budget' },
+        { id: 'todos', icon: <List className="w-6 h-6"/>, label: 'To-Do List' },
+        { id: 'venues', icon: <MapPin className="w-6 h-6"/>, label: 'Venues' },
+        { id: 'vendors', icon: <Briefcase className="w-6 h-6"/>, label: 'Vendors' },
+        { id: 'ai-scout', icon: <Sparkles className="w-6 h-6"/>, label: 'AI Venue Scout' },
+    ];
+    
+    // The rest of the Sidebar component is unchanged...
+    return (
+        <nav className="w-20 lg:w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col justify-between">
+            <div>
+                <div className="flex items-center justify-center lg:justify-start p-4 lg:p-6 border-b border-gray-200 dark:border-gray-700">
+                    <img src="https://placehold.co/40x40/f472b6/ffffff?text=WP" alt="Logo" className="rounded-full"/>
+                    <h1 className="hidden lg:block ml-4 text-xl font-bold text-pink-500">Wedding Planner</h1>
+                </div>
+                <ul>
+                    {navItems.map(item => (
+                        <li key={item.id} className="mt-2">
+                            <a href="#" onClick={(e) => { e.preventDefault(); setActiveTab(item.id); }} className={`flex items-center justify-center lg:justify-start p-4 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900 hover:text-pink-500 transition-colors duration-200 ${activeTab === item.id ? 'bg-pink-100 dark:bg-pink-900/50 text-pink-500 border-r-4 border-pink-500' : ''}`}>
+                                {item.icon}
+                                <span className="hidden lg:block ml-4">{item.label}</span>
+                            </a>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+             <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p>
+            </div>
+        </nav>
+    );
+};
 const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
     const { query, results, isLoading, error } = cache;
 
@@ -514,6 +656,7 @@ const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, children,
 const GuestList = ({ guests, onAdd, onEdit, onDelete }) => {
     const columns = [
         { key: 'name', label: 'Name'},
+        { key: 'group', label: 'Group' }, // Added new column
         { key: 'status', label: 'Status' },
         { key: 'notes', label: 'Notes' }
     ];
@@ -528,6 +671,7 @@ const GuestList = ({ guests, onAdd, onEdit, onDelete }) => {
         {guest => (
             <>
                 <td className="p-3">{guest.name}</td>
+                <td className="p-3">{guest.group}</td> {/* Added new table cell */}
                 <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(guest.status)}`}>{guest.status}</span></td>
                 <td className="p-3">{guest.notes}</td>
             </>
@@ -618,7 +762,13 @@ const Modal = ({ modalType, onClose, onSubmit, formData, onChange }) => {
 
     const renderFields = () => {
         switch (modalType) {
-            case 'guest': return <> <InputField name="name" label="Name" value={formData.name || ''} onChange={onChange} required /> <SelectField name="status" label="Status" value={formData.status || 'Pending'} onChange={onChange} options={['Pending', 'Attending', 'Declined']} /> <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} /> </>;
+            case 'guest':
+                return <>
+                    <InputField name="name" label="Name" value={formData.name || ''} onChange={onChange} required />
+                    <InputField name="group" label="Group (e.g., Bride's Family)" value={formData.group || ''} onChange={onChange} placeholder="Groom's College Friends" />
+                    <SelectField name="status" label="Status" value={formData.status || 'Pending'} onChange={onChange} options={['Pending', 'Attending', 'Declined']} />
+                    <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} />
+                </>;
             case 'expense': return <> <InputField name="item" label="Item" value={formData.item || ''} onChange={onChange} required /> <InputField name="category" label="Category" value={formData.category || ''} onChange={onChange} required /> <InputField name="estimated" label="Estimated Cost" type="number" value={formData.estimated || ''} onChange={onChange} /> <InputField name="actual" label="Actual Cost" type="number" value={formData.actual || ''} onChange={onChange} /> <InputField name="vendor" label="Vendor" value={formData.vendor || ''} onChange={onChange} /> </>;
             case 'todo': return <> <InputField name="task" label="Task" value={formData.task || ''} onChange={onChange} required /> <InputField name="dueDate" label="Due Date" type="date" value={formData.dueDate || ''} onChange={onChange} /> </>;
             case 'venue': return <> <InputField name="name" label="Venue Name" value={formData.name || ''} onChange={onChange} required /> <InputField name="location" label="Location" value={formData.location || ''} onChange={onChange} /> <InputField name="website" label="Website URL" placeholder="https://example.com" value={formData.website || ''} onChange={onChange} /> <InputField name="imageUrl" label="Image URL" placeholder="https://example.com/image.jpg" value={formData.imageUrl || ''} onChange={onChange} /> <InputField name="capacity" label="Capacity" type="number" value={formData.capacity || ''} onChange={onChange} /> <InputField name="price" label="Price" type="number" value={formData.price || ''} onChange={onChange} /> <TextAreaField name="notes" label="Notes" value={formData.notes || ''} onChange={onChange} /> </>;
@@ -654,5 +804,95 @@ const Modal = ({ modalType, onClose, onSubmit, formData, onChange }) => {
 const InputField = ({ name, label, ...props }) => ( <div> <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label> <input id={name} name={name} {...props} className="w-full p-2 border rounded-md" /> </div> );
 const TextAreaField = ({ name, label, ...props }) => ( <div> <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label> <textarea id={name} name={name} {...props} rows="3" className="w-full p-2 border rounded-md"></textarea> </div> );
 const SelectField = ({ name, label, options, ...props }) => ( <div> <label htmlFor={name} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label> <select id={name} name={name} {...props} className="w-full p-2 border rounded-md"> {options.map(opt => <option key={opt} value={opt}>{opt}</option>)} </select> </div> );
+const SeatingChart = ({ guests, plan, setPlan }) => {
+    // Find which guests are already seated
+    const seatedGuestIds = new Set(Object.values(plan).flat());
+    const unseatedGuests = guests.filter(g => !seatedGuestIds.has(g.id));
+
+    // --- Drag and Drop Handlers ---
+    const handleDragStart = (e, guestId) => {
+        e.dataTransfer.setData("guestId", guestId);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault(); // This is necessary to allow dropping
+    };
+
+    // This function is now upgraded to handle dropping on tables OR the unseated list
+    const handleDrop = (e, target) => {
+        e.preventDefault();
+        const guestId = parseInt(e.dataTransfer.getData("guestId"));
+        const newPlan = { ...plan };
+
+        // First, always remove the guest from whatever table they are currently on
+        Object.keys(newPlan).forEach(table => {
+            newPlan[table] = newPlan[table].filter(id => id !== guestId);
+        });
+
+        // If the target is a table (and not the 'unseated' list), add the guest to it
+        if (target !== 'unseated') {
+            newPlan[target].push(guestId);
+        }
+
+        // Update the state with the new arrangement
+        setPlan(newPlan);
+    };
+
+    return (
+        <div className="flex flex-col md:flex-row h-full gap-6">
+            {/* Unseated Guests List - NOW A DROP TARGET */}
+            <div 
+                className="w-full md:w-1/3 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-2 border-dashed border-gray-300 dark:border-gray-600"
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, 'unseated')}
+            >
+                <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">Unseated Guests ({unseatedGuests.length})</h2>
+                <div className="space-y-2 h-full overflow-y-auto">
+                    {unseatedGuests.map(guest => (
+                        <div 
+                            key={guest.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, guest.id)}
+                            className="p-3 bg-gray-100 dark:bg-gray-700 rounded-md cursor-grab active:cursor-grabbing"
+                        >
+                            <p className="font-semibold text-gray-800 dark:text-gray-200">{guest.name}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{guest.group}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Tables Section */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 h-full overflow-y-auto">
+                {Object.entries(plan).map(([tableName, guestIds]) => (
+                    <div 
+                        key={tableName} 
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, tableName)}
+                        className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-2 border-dashed border-gray-300 dark:border-gray-600"
+                    >
+                        <h3 className="text-lg font-bold text-pink-500 mb-3">{tableName} ({guestIds.length})</h3>
+                        <div className="space-y-2">
+                            {guestIds.map(id => {
+                                const guest = guests.find(g => g.id === id);
+                                if (!guest) return null;
+                                return (
+                                    <div 
+                                        key={guest.id} 
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, guest.id)}
+                                        className="p-2 bg-pink-100 dark:bg-pink-900/50 rounded-md cursor-grab active:cursor-grabbing"
+                                    >
+                                        <p className="font-semibold text-pink-800 dark:text-pink-200">{guest.name}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 export default App;
