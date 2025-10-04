@@ -220,7 +220,7 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
 
     // ✨ PROMPT OPTIMIZED FOR SPEED ✨
     // This prompt is more direct and machine-readable, resulting in a faster response.
-    const prompt = `Find 5 wedding venues near "${query.location}" for a budget under $${query.budget}. IMPORTANT: Respond with only a valid JSON object. The JSON object must have a single root key "venues", which is an array of objects. Each venue object in the array must include these exact keys: "name" (string), "location" (string), "aesthetic_description" (string), "estimated_price" (number), "website_url" (string, must direct to the main home page), and "image_url" (string, must be a direct hotlink to a .jpg, .png, or .webp file). Do not include any text, titles, or markdown before or after the JSON object.`;
+    const prompt = `Find 5 wedding venues near "${query.location}" for a budget under $${query.budget}. IMPORTANT: Respond with only a valid JSON object. The JSON object must have a single root key "venues", which is an array of objects. Each venue object in the array must include these exact keys: "name" (string), "location" (string), "aesthetic_description" (string), "estimated_price" (number), "website_url" (string), and "image_url" (string, must be a direct hotlink to a .jpg, .png, or .webp file). Do not include any text, titles, or markdown before or after the JSON object.`;
 
     const payload = { prompt };
 
