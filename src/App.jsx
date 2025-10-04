@@ -203,7 +203,121 @@ const PlannerNavButton = ({ label, icon, isActive, onClick }) => ( <button onCli
 const RingSizerGuide = () => ( <div><h2 className="text-3xl font-bold mb-4 text-gray-100">Stealthy Ring Sizing 💍</h2><p className="text-lg text-gray-400 mb-8">Here are a few clever ways to find out their ring size without spoiling the surprise.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">The "Borrow" Method</h3><p className="text-gray-300">"Borrow" a ring they already own (make sure it's one they wear on the correct finger!). Take it to a jeweler or use a printable ring sizer chart online to measure it. Return it before they notice!</p></div><div className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">Recruit an Accomplice</h3><p className="text-gray-300">Enlist one of their close friends or family members. The friend can suggest a "fun" trip to a jewelry store to try on rings, and then secretly report the size back to you.</p></div></div></div> );
 const IdeaGenerator = () => { const [filters, setFilters] = useState({ personality: 'any', budget: 'any' }); const ideas = [ { id: 1, title: 'Romantic Dinner Proposal', description: 'Arrange a surprise dinner at their favorite restaurant or cook a gourmet meal at home. Propose over dessert.', personality: 'romantic', budget: 'medium' }, { id: 2, title: 'Scenic Hike Proposal', description: 'Plan a hike to a location with a breathtaking view. At the summit, get down on one knee.', personality: 'adventurous', budget: 'low' }]; const filteredIdeas = ideas.filter(idea => (filters.personality === 'any' || idea.personality === filters.personality) && (filters.budget === 'any' || idea.budget === filters.budget) ); return ( <div><h2 className="text-3xl font-bold mb-4 text-gray-100">Proposal Idea Generator ✨</h2><div className="flex space-x-4 mb-8 bg-gray-800 p-4 rounded-lg"><div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-1">Personality</label><select value={filters.personality} onChange={e => setFilters({...filters, personality: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"><option value="any">Any</option><option value="romantic">Romantic</option><option value="adventurous">Adventurous</option></select></div><div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-1">Budget</label><select value={filters.budget} onChange={e => setFilters({...filters, budget: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"><option value="any">Any</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div></div><div className="space-y-4">{filteredIdeas.map(idea => ( <div key={idea.id} className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">{idea.title}</h3><p className="text-gray-300">{idea.description}</p></div> ))}</div></div> ); };
 const Sidebar = ({ activeTab, setActiveTab, userId }) => { const navItems = [ { id: 'dashboard', icon: <Sun className="w-6 h-6"/>, label: 'Dashboard' }, { id: 'guests', icon: <Users className="w-6 h-6"/>, label: 'Guest List' }, { id: 'seating', icon: <Grid className="w-6 h-6"/>, label: 'Seating Chart' }, { id: 'budget', icon: <DollarSign className="w-6 h-6"/>, label: 'Budget' }, { id: 'todos', icon: <List className="w-6 h-6"/>, label: 'To-Do List' }, { id: 'venues', icon: <MapPin className="w-6 h-6"/>, label: 'Venues' }, { id: 'vendors', icon: <Briefcase className="w-6 h-6"/>, label: 'Vendors' }, { id: 'ai-scout', icon: <Sparkles className="w-6 h-6"/>, label: 'AI Venue Scout' }, ]; return ( <nav className="w-20 lg:w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col justify-between"> <div> <div className="flex items-center justify-center lg:justify-start p-4 lg:p-6 border-b border-gray-200 dark:border-gray-700"> <Heart className="text-pink-500 w-8 h-8" /> <h1 className="hidden lg:block ml-4 text-xl font-bold text-pink-500">Wedding Planner</h1> </div> <ul> {navItems.map(item => ( <li key={item.id} className="mt-2"> <a href="#" onClick={(e) => { e.preventDefault(); setActiveTab(item.id); }} className={`flex items-center justify-center lg:justify-start p-4 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900 hover:text-pink-500 transition-colors duration-200 ${activeTab === item.id ? 'bg-pink-100 dark:bg-pink-900/50 text-pink-500 border-r-4 border-pink-500' : ''}`}> {item.icon} <span className="hidden lg:block ml-4">{item.label}</span> </a> </li> ))} </ul> </div> <div className="p-4 border-t border-gray-200 dark:border-gray-700"> <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p> <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p> </div> </nav> ); };
-const AIVenueScout = ({ onSaveVenue, cache, setCache }) => { const { query, results, isLoading, error } = cache; const handleQueryChange = (field, value) => { setCache(prev => ({ ...prev, query: { ...prev.query, [field]: value } })); }; const handleSearch = async (e) => { e.preventDefault(); if (!query.location || !query.budget) { setCache(prev => ({ ...prev, error: 'Please enter a location and budget.' })); return; } setCache(prev => ({ ...prev, isLoading: true, error: null, results: [] })); const prompt = `Act as a wedding venue scout. Find 5 potential wedding venues in or near "${query.location}" with an estimated price for a wedding under "$${query.budget}". For each venue, provide its name, location, an "aesthetic_description", an "estimated_price" as a number, its official "website_url", and a publicly accessible, direct hotlink to a high-quality image (must end in .jpg, .png, or .webp) under the key "image_url". Do not provide a URL to a webpage or search result. IMPORTANT: Respond with only a valid JSON object. The JSON object should have a single key "venues" which is an array of the venue objects. Do not include any text, titles, markdown formatting, or explanations before or after the JSON object.`; const payload = { prompt }; try { const response = await fetch('/.netlify/functions/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) { throw new Error(`API call failed with status: ${response.status}`); } const result = await response.json(); const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text; if (rawText) { const jsonString = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1); const parsedResult = JSON.parse(jsonString); setCache(prev => ({ ...prev, results: parsedResult.venues || [] })); } else { setCache(prev => ({ ...prev, error: "Could not find any venues." })); } } catch (err) { console.error("Error finding venues:", err); setCache(prev => ({ ...prev, error: `An error occurred: ${err.message}` })); } finally { setCache(prev => ({ ...prev, isLoading: false })); } }; const ensureProtocol = (url) => { if (!url) return '#'; if (!/^https?:\/\//i.test(url)) { return `https://${url}`; } return url; }; return ( <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">AI Venue Scout 🤖</h1> <p className="text-gray-600 dark:text-gray-400 mb-6">Let AI find the perfect venue for your budget and location.</p> <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8"> <input type="text" value={query.location} onChange={e => handleQueryChange('location', e.target.value)} placeholder="Enter City or Area" className="flex-grow p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" /> <input type="number" value={query.budget} onChange={e => handleQueryChange('budget', e.target.value)} placeholder="Max Venue Budget" className="w-full md:w-1/4 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" /> <button type="submit" disabled={isLoading} className="bg-pink-500 text-white px-6 py-2 rounded-md hover:bg-pink-600 flex items-center justify-center disabled:bg-pink-300"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Find Venues'} </button> </form> {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md mb-6" role="alert">{error}</div>} <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {results.map((venue, index) => ( <div key={index} className="border rounded-lg flex flex-col justify-between bg-gray-50 dark:bg-gray-700/50 shadow overflow-hidden"> <div className="h-48 bg-gray-200 dark:bg-gray-600 flex items-center justify-center"> {venue.image_url ? ( <img src={`https://corsproxy.io/?${encodeURIComponent(venue.image_url)}`} alt={`View of ${venue.name}`} className="w-full h-full object-cover" /> ) : ( <ImageIcon className="w-12 h-12 text-gray-400" /> )} </div> <div className="p-4 flex-grow flex flex-col"> <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400">{venue.name}</h3> <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{venue.location}</p> <div className="flex-grow"></div> <div className="flex justify-between items-center mt-4 border-t pt-3 dark:border-gray-600"> <a href={ensureProtocol(venue.website_url)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm flex items-center"> <LinkIcon size={14} className="mr-1"/> Website </a> <button onClick={() => onSaveVenue(venue)} className="bg-green-500 text-white px-3 py-1 text-sm rounded-md hover:bg-green-600 flex items-center"><Heart size={14} className="mr-1"/> Save</button> </div> </div> </div> ))} </div> </div> ); };
+const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
+  const { query, results, isLoading, error } = cache;
+
+  const handleQueryChange = (field, value) => {
+    setCache(prev => ({ ...prev, query: { ...prev.query, [field]: value } }));
+  };
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!query.location || !query.budget) {
+      setCache(prev => ({ ...prev, error: 'Please enter a location and budget.' }));
+      return;
+    }
+    setCache(prev => ({ ...prev, isLoading: true, error: null, results: [] }));
+
+    // ✨ PROMPT OPTIMIZED FOR SPEED ✨
+    // This prompt is more direct and machine-readable, resulting in a faster response.
+    const prompt = `Find 5 wedding venues near "${query.location}" for a budget under $${query.budget}. IMPORTANT: Respond with only a valid JSON object. The JSON object must have a single root key "venues", which is an array of objects. Each venue object in the array must include these exact keys: "name" (string), "location" (string), "aesthetic_description" (string), "estimated_price" (number), "website_url" (string, must direct to the main home page), and "image_url" (string, must be a direct hotlink to a .jpg, .png, or .webp file). Do not include any text, titles, or markdown before or after the JSON object.`;
+
+    const payload = { prompt };
+
+    try {
+      const response = await fetch('/.netlify/functions/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`API call failed with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (rawText) {
+        // This logic to find the JSON within the string is good practice
+        const jsonString = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+        const parsedResult = JSON.parse(jsonString);
+        setCache(prev => ({ ...prev, results: parsedResult.venues || [] }));
+      } else {
+        setCache(prev => ({ ...prev, error: "Could not find any venues." }));
+      }
+    } catch (err) {
+      console.error("Error finding venues:", err);
+      setCache(prev => ({ ...prev, error: `An error occurred: ${err.message}` }));
+    } finally {
+      setCache(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const ensureProtocol = (url) => {
+    if (!url) return '#';
+    if (!/^https?:\/\//i.test(url)) {
+      return `https://${url}`;
+    }
+    return url;
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+      <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">AI Venue Scout 🤖</h1>
+      <p className="text-gray-600 dark:text-gray-400 mb-6">Let AI find the perfect venue for your budget and location.</p>
+      <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
+        <input
+          type="text"
+          value={query.location}
+          onChange={e => handleQueryChange('location', e.target.value)}
+          placeholder="Enter City or Area"
+          className="flex-grow p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+        />
+        <input
+          type="number"
+          value={query.budget}
+          onChange={e => handleQueryChange('budget', e.target.value)}
+          placeholder="Max Venue Budget"
+          className="w-full md:w-1/4 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+        />
+        <button type="submit" disabled={isLoading} className="bg-pink-500 text-white px-6 py-2 rounded-md hover:bg-pink-600 flex items-center justify-center disabled:bg-pink-300">
+          {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Find Venues'}
+        </button>
+      </form>
+
+      {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md mb-6" role="alert">{error}</div>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {results.map((venue, index) => (
+          <div key={index} className="border rounded-lg flex flex-col justify-between bg-gray-50 dark:bg-gray-700/50 shadow overflow-hidden">
+            <div className="h-48 bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
+              {venue.image_url ? (
+                <img src={`https://corsproxy.io/?${encodeURIComponent(venue.image_url)}`} alt={`View of ${venue.name}`} className="w-full h-full object-cover" />
+              ) : (
+                <ImageIcon className="w-12 h-12 text-gray-400" />
+              )}
+            </div>
+            <div className="p-4 flex-grow flex flex-col">
+              <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400">{venue.name}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{venue.location}</p>
+              {/* aesthetic_description can be added here if you want to display it */}
+              <div className="flex-grow"></div>
+              <div className="flex justify-between items-center mt-4 border-t pt-3 dark:border-gray-600">
+                <a href={ensureProtocol(venue.website_url)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm flex items-center">
+                  <LinkIcon size={14} className="mr-1"/> Website
+                </a>
+                <button onClick={() => onSaveVenue(venue)} className="bg-green-500 text-white px-3 py-1 text-sm rounded-md hover:bg-green-600 flex items-center">
+                  <Heart size={14} className="mr-1"/> Save
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 const Dashboard = ({ stats, weddingDate, onDateChange, budgetChartData }) => ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"> <div className="lg:col-span-4"> <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Your Wedding Dashboard</h1> <p className="text-gray-600 dark:text-gray-400">Here's a snapshot of your wedding planning progress.</p> </div> <StatCard title="Days Until Wedding" value={stats.countdown > 0 ? stats.countdown : "Congratulations!"} icon={<Calendar />} /> <StatCard title="Guests Attending" value={`${stats.guestsAttending} / ${stats.totalGuests}`} icon={<Users />} /> <StatCard title="Budget Spent" value={`$${stats.actualSpending.toLocaleString()} / $${stats.estimatedBudget.toLocaleString()}`} icon={<DollarSign />} /> <StatCard title="Tasks Completed" value={`${stats.tasksCompleted} / ${stats.totalTasks}`} icon={<List />} /> <div className="md:col-span-2 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">Set Your Wedding Date</h2> <input type="date" value={weddingDate} onChange={onDateChange} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" /> </div> <div className="md:col-span-2 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col"> <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">Budget Breakdown</h2> {budgetChartData.length > 0 ? ( <ResponsiveContainer width="100%" height={200}> <PieChart> <Pie data={budgetChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label> {budgetChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={['#f472b6', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6'][index % 5]} />)} </Pie> <Tooltip /> </PieChart> </ResponsiveContainer> ) : ( <div className="flex-grow flex items-center justify-center h-full text-gray-500"> Add expenses to see a breakdown. </div> )} </div> </div> );
 const StatCard = ({ title, value, icon }) => ( <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-center"> <div className="p-3 bg-pink-100 dark:bg-pink-900/50 rounded-full text-pink-500 mr-4"> {icon} </div> <div> <p className="text-sm text-gray-600 dark:text-gray-400">{title}</p> <p className="text-2xl font-bold text-gray-800 dark:text-white">{value}</p> </div> </div> );
 const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, renderRow, onGenerateTasks, isGeneratingTasks }) => ( <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <div className="flex justify-between items-center mb-4"> <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h1> <div className="flex items-center space-x-2"> {onGenerateTasks && ( <button onClick={onGenerateTasks} disabled={isGeneratingTasks} className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300"> {isGeneratingTasks ? ( <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Generating...</> ) : ( <><Sparkles size={16} className="mr-2"/> Suggest Tasks</> )} </button> )} <button onClick={onAdd} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 flex items-center"> <Plus size={16} className="mr-2"/> Add New </button> </div> </div> <div className="overflow-x-auto"> <table className="w-full text-left text-gray-600 dark:text-gray-400"> <thead className="bg-gray-50 dark:bg-gray-700"> <tr> {columns.map(col => <th key={col.key} className="p-3 font-semibold">{col.label}</th>)} <th className="p-3 font-semibold">Actions</th> </tr> </thead> <tbody> {(items || []).length > 0 ? ( (items || []).map(item => ( <tr key={item.id} className="border-b dark:border-gray-700"> {renderRow(item)} <td className="p-3"> <button onClick={() => onEdit(item)} className="text-blue-500 hover:text-blue-700 mr-2"><Edit size={18}/></button> <button onClick={() => onDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button> </td> </tr> )) ) : ( <tr> <td colSpan={columns.length + 1} className="text-center p-4 text-gray-500"> No items yet. Click "Add New" to get started! </td> </tr> )} </tbody> </table> </div> </div> );
