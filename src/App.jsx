@@ -3,8 +3,11 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Check, Palette } from 'lucide-react';
+import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Leaf, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Check, Palette } from 'lucide-react';
+import Login from './components/login';
 import WeddingSimulator from './components/WeddingSimulator';
+import BouquetBuilder from './components/BouquetBuilder';
+
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -45,6 +48,7 @@ const App = () => {
         todoList: [],
         venues: [],
         vendors: [],
+        florals: { bouquet: [] },
     });
     const [modal, setModal] = useState(null);
     const [editItemId, setEditItemId] = useState(null);
@@ -70,15 +74,13 @@ const App = () => {
             setIsAuthReady(true);
             return;
         }
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
+                // User is signed in (either permanently or from a previous session)
                 setUserId(user.uid);
             } else {
-                try {
-                    await signInAnonymously(auth);
-                } catch (error) {
-                    console.error("Firebase Anonymous auth error:", error);
-                }
+                // User is signed out
+                setUserId(null);
             }
             setIsAuthReady(true);
         });
@@ -193,6 +195,11 @@ const App = () => {
             setIsGeneratingTasks(false);
         }
     };
+    const handleFloralsUpdate = (newFlorals) => {
+    const updatedData = { ...weddingData, florals: newFlorals };
+    setWeddingData(updatedData);
+    handleDataUpdate(updatedData, 'planning');
+};
     // --- Memoized Calculations ---
     const dashboardStats = useMemo(() => { const { weddingDate, guestList, budget, todoList } = weddingData; const today = new Date(); const wDate = new Date(weddingDate); const countdown = Math.ceil((wDate - today) / (1000 * 60 * 60 * 24)); const guestsAttending = (guestList || []).filter(g => g.status === 'Attending').length; const totalGuests = (guestList || []).length; const actualSpending = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0); const tasksCompleted = (todoList || []).filter(t => t.completed).length; const totalTasks = (todoList || []).length; return { countdown, guestsAttending, totalGuests, actualSpending, estimatedBudget: budget.estimated, tasksCompleted, totalTasks }; }, [weddingData]);
     const budgetChartData = useMemo(() => { const { expenses } = weddingData.budget; if (!expenses || expenses.length === 0) return []; const categoryTotals = expenses.reduce((acc, expense) => { const category = expense.category || 'Uncategorized'; acc[category] = (acc[category] || 0) + (parseFloat(expense.actual) || 0); return acc; }, {}); return Object.entries(categoryTotals).map(([name, value]) => ({ name, value })); }, [weddingData.budget.expenses]);
@@ -203,6 +210,7 @@ const App = () => {
             case 'dashboard': return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
             case 'guests': return <GuestList guests={weddingData.guestList || []} onAdd={() => openModal('guest')} onEdit={(item) => openModal('guest', item)} onDelete={(id) => handleDelete('guest', id)} />;
             case 'seating': return <SeatingChart guests={weddingData.guestList || []} plan={seatingPlan} setPlan={setSeatingPlan} />;
+            case 'florals': return <BouquetBuilder florals={weddingData.florals} onUpdate={handleFloralsUpdate} />;
             case 'budget': return <Budget budget={weddingData.budget || {}} onAddExpense={() => openModal('expense')} onEditExpense={(item) => openModal('expense', item)} onDeleteExpense={(id) => handleDelete('expense', id)} onBudgetChange={handleBudgetChange} />;
             case 'todos': return <TodoList todos={weddingData.todoList || []} onAdd={() => openModal('todo')} onEdit={(item) => openModal('todo', item)} onDelete={(id) => handleDelete('todo', id)} onToggle={toggleTodoCompletion} onGenerateTasks={handleGenerateTasks} isGeneratingTasks={isGeneratingTasks} />;
             case 'venues': return <Venues venues={weddingData.venues || []} onAdd={() => openModal('venue')} onEdit={(item) => openModal('venue', item)} onDelete={(id) => handleDelete('venue', id)} />;
@@ -212,25 +220,45 @@ const App = () => {
         }
     };
     
+    // --- Main Render Function ---
     if (!isAuthReady) {
         return <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-pink-500"></div></div>;
     }
 
-    switch (appMode) {
-        case 'welcome': return <WelcomeScreen setAppMode={setAppMode} />;
-        case 'proposal': return <ProposalPlanner plan={proposalPlan} onUpdate={handleDataUpdate} onComplete={startWeddingPlanning} />;
-        case 'simulator': return <WeddingSimulator dream={dreamWedding} onUpdate={handleDataUpdate} onComplete={startWeddingPlanning} />;
-        case 'planning': return ( <div className="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans"> <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userId={userId} /> <main className="flex-1 p-4 md:p-8 overflow-y-auto"> {renderContent()} </main> {modal && <Modal modalType={modal} onClose={closeModal} onSubmit={handleFormSubmit} formData={formData} onChange={handleFormChange} />} </div> );
-        default: return <WelcomeScreen setAppMode={setAppMode} />;
+    // If no user is logged in, show the Login screen.
+    if (!userId) {
+        return <Login />;
     }
-};
+
+    // If a user is logged in, show the rest of the app.
+    switch (appMode) {
+        case 'welcome':
+            return <WelcomeScreen setAppMode={setAppMode} />;
+        case 'proposal':
+            return <ProposalPlanner plan={proposalPlan} onUpdate={handleDataUpdate} onComplete={startWeddingPlanning} />;
+        case 'simulator':
+            return <WeddingSimulator dream={dreamWedding} onUpdate={handleDataUpdate} onComplete={startWeddingPlanning} />;
+        case 'planning':
+            return (
+                <div className="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans">
+                    <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userId={userId} />
+                    <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+                        {renderContent()}
+                    </main>
+                    {modal && <Modal modalType={modal} onClose={closeModal} onSubmit={handleFormSubmit} formData={formData} onChange={handleFormChange} />}
+                </div>
+            );
+        default:
+            return <WelcomeScreen setAppMode={setAppMode} />;
+    };
+}
 
 const WelcomeScreen = ({ setAppMode }) => ( <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-pink-100 to-purple-100 dark:from-gray-800 dark:to-gray-900 text-center p-4"> <h1 className="text-5xl font-bold text-gray-800 dark:text-white mb-4">Welcome to Your Love Story</h1> <p className="text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl">Whether you're planning the perfect question or dreaming of the perfect day, your journey starts here.</p> <div className="flex flex-col md:flex-row gap-8"> <button onClick={() => setAppMode('proposal')} className="bg-white dark:bg-gray-700 text-gray-800 dark:text-white font-semibold py-6 px-12 rounded-lg shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"> <Gift size={40} className="mx-auto mb-4 text-pink-500"/> <h2 className="text-2xl">Plan a Proposal</h2> <p className="text-sm text-gray-500 dark:text-gray-400">Craft the unforgettable moment.</p> </button> <button onClick={() => setAppMode('simulator')} className="bg-white dark:bg-gray-700 text-gray-800 dark:text-white font-semibold py-6 px-12 rounded-lg shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"> <Wand2 size={40} className="mx-auto mb-4 text-purple-500"/> <h2 className="text-2xl">Dream Up Your Wedding</h2> <p className="text-sm text-gray-500 dark:text-gray-400">Visualize your perfect day.</p> </button> </div> <div className="mt-16"> <button onClick={() => setAppMode('planning')} className="text-gray-500 dark:text-gray-400 hover:text-pink-500 transition-colors"> Already engaged? Skip to the wedding planner &rarr; </button> </div> </div> );
 const ProposalPlanner = ({ plan, onUpdate, onComplete }) => { const [activeSection, setActiveSection] = useState('checklist'); const handleTodoToggle = (id) => { const updatedTodos = (plan.todoList || []).map(todo => todo.id === id ? { ...todo, completed: !todo.completed } : todo ); onUpdate({ ...plan, todoList: updatedTodos }, 'proposal'); }; const renderSection = () => { switch(activeSection) { case 'ringSizer': return <RingSizerGuide />; case 'ideas': return <IdeaGenerator />; case 'checklist': default: return ( <div className="w-full"> <h2 className="text-2xl font-semibold mb-4 text-gray-200">The Secret Checklist</h2> <ul className="space-y-3"> {(plan.todoList || []).map(todo => ( <li key={todo.id} className="flex items-center bg-gray-700 p-4 rounded-lg"> <input type="checkbox" checked={todo.completed} onChange={() => handleTodoToggle(todo.id)} className="h-6 w-6 rounded border-gray-500 bg-gray-800 text-pink-500 focus:ring-pink-600 cursor-pointer" /> <span className={`ml-4 text-lg ${todo.completed ? 'line-through text-gray-400' : 'text-gray-200'}`}>{todo.text}</span> </li> ))} </ul> </div> ); } }; return ( <div className="flex h-screen bg-gray-900 text-white font-sans"> <div className="w-24 lg:w-72 bg-gray-800 p-4 flex flex-col shadow-2xl"> <div className="flex items-center justify-center lg:justify-start mb-10 pt-4"> <Gift size={32} className="text-pink-500"/> <h1 className="hidden lg:block ml-3 text-2xl font-bold">Proposal Plan</h1> </div> <nav className="flex flex-col space-y-2"> <PlannerNavButton label="Checklist" icon={<List />} isActive={activeSection === 'checklist'} onClick={() => setActiveSection('checklist')} /> <PlannerNavButton label="Ring Sizer" icon={<Heart />} isActive={activeSection === 'ringSizer'} onClick={() => setActiveSection('ringSizer')} /> <PlannerNavButton label="Idea Generator" icon={<Sparkles />} isActive={activeSection === 'ideas'} onClick={() => setActiveSection('ideas')} /> </nav> <div className="mt-auto"> <button onClick={onComplete} className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center text-lg"> <span className="hidden lg:inline">She/He/They Said Yes!</span> 🎉 </button> </div> </div> <main className="flex-1 p-6 md:p-10 overflow-y-auto">{renderSection()}</main> </div> ); };
 const PlannerNavButton = ({ label, icon, isActive, onClick }) => ( <button onClick={onClick} className={`flex items-center justify-center lg:justify-start p-4 rounded-lg text-lg transition-colors duration-200 ${ isActive ? 'bg-pink-500/20 text-pink-400' : 'text-gray-300 hover:bg-gray-700' }`} > {icon} <span className="hidden lg:block ml-4">{label}</span> </button> );
 const RingSizerGuide = () => ( <div><h2 className="text-3xl font-bold mb-4 text-gray-100">Stealthy Ring Sizing 💍</h2><p className="text-lg text-gray-400 mb-8">Here are a few clever ways to find out their ring size without spoiling the surprise.</p><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">The "Borrow" Method</h3><p className="text-gray-300">"Borrow" a ring they already own (make sure it's one they wear on the correct finger!). Take it to a jeweler or use a printable ring sizer chart online to measure it. Return it before they notice!</p></div><div className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">Recruit an Accomplice</h3><p className="text-gray-300">Enlist one of their close friends or family members. The friend can suggest a "fun" trip to a jewelry store to try on rings, and then secretly report the size back to you.</p></div></div></div> );
 const IdeaGenerator = () => { const [filters, setFilters] = useState({ personality: 'any', budget: 'any' }); const ideas = [ { id: 1, title: 'Romantic Dinner Proposal', description: 'Arrange a surprise dinner at their favorite restaurant or cook a gourmet meal at home. Propose over dessert.', personality: 'romantic', budget: 'medium' }, { id: 2, title: 'Scenic Hike Proposal', description: 'Plan a hike to a location with a breathtaking view. At the summit, get down on one knee.', personality: 'adventurous', budget: 'low' }]; const filteredIdeas = ideas.filter(idea => (filters.personality === 'any' || idea.personality === filters.personality) && (filters.budget === 'any' || idea.budget === filters.budget) ); return ( <div><h2 className="text-3xl font-bold mb-4 text-gray-100">Proposal Idea Generator ✨</h2><div className="flex space-x-4 mb-8 bg-gray-800 p-4 rounded-lg"><div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-1">Personality</label><select value={filters.personality} onChange={e => setFilters({...filters, personality: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"><option value="any">Any</option><option value="romantic">Romantic</option><option value="adventurous">Adventurous</option></select></div><div className="flex-1"><label className="block text-sm font-medium text-gray-300 mb-1">Budget</label><select value={filters.budget} onChange={e => setFilters({...filters, budget: e.target.value})} className="w-full p-2 border-gray-600 bg-gray-700 text-white rounded-md focus:ring-pink-500 focus:border-pink-500"><option value="any">Any</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div></div><div className="space-y-4">{filteredIdeas.map(idea => ( <div key={idea.id} className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold text-pink-400 mb-2">{idea.title}</h3><p className="text-gray-300">{idea.description}</p></div> ))}</div></div> ); };
-const Sidebar = ({ activeTab, setActiveTab, userId }) => { const navItems = [ { id: 'dashboard', icon: <Sun className="w-6 h-6"/>, label: 'Dashboard' }, { id: 'guests', icon: <Users className="w-6 h-6"/>, label: 'Guest List' }, { id: 'seating', icon: <Grid className="w-6 h-6"/>, label: 'Seating Chart' }, { id: 'budget', icon: <DollarSign className="w-6 h-6"/>, label: 'Budget' }, { id: 'todos', icon: <List className="w-6 h-6"/>, label: 'To-Do List' }, { id: 'venues', icon: <MapPin className="w-6 h-6"/>, label: 'Venues' }, { id: 'vendors', icon: <Briefcase className="w-6 h-6"/>, label: 'Vendors' }, { id: 'ai-scout', icon: <Sparkles className="w-6 h-6"/>, label: 'AI Venue Scout' }, ]; return ( <nav className="w-20 lg:w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col justify-between"> <div> <div className="flex items-center justify-center lg:justify-start p-4 lg:p-6 border-b border-gray-200 dark:border-gray-700"> <Heart className="text-pink-500 w-8 h-8" /> <h1 className="hidden lg:block ml-4 text-xl font-bold text-pink-500">Wedding Planner</h1> </div> <ul> {navItems.map(item => ( <li key={item.id} className="mt-2"> <a href="#" onClick={(e) => { e.preventDefault(); setActiveTab(item.id); }} className={`flex items-center justify-center lg:justify-start p-4 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900 hover:text-pink-500 transition-colors duration-200 ${activeTab === item.id ? 'bg-pink-100 dark:bg-pink-900/50 text-pink-500 border-r-4 border-pink-500' : ''}`}> {item.icon} <span className="hidden lg:block ml-4">{item.label}</span> </a> </li> ))} </ul> </div> <div className="p-4 border-t border-gray-200 dark:border-gray-700"> <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p> <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p> </div> </nav> ); };
+const Sidebar = ({ activeTab, setActiveTab, userId }) => { const navItems = [ { id: 'dashboard', icon: <Sun className="w-6 h-6"/>, label: 'Dashboard' }, { id: 'guests', icon: <Users className="w-6 h-6"/>, label: 'Guest List' }, { id: 'seating', icon: <Grid className="w-6 h-6"/>, label: 'Seating Chart' }, { id: 'florals', icon: <Leaf className="w-6 h-6"/>, label: 'Florals' }, { id: 'budget', icon: <DollarSign className="w-6 h-6"/>, label: 'Budget' }, { id: 'todos', icon: <List className="w-6 h-6"/>, label: 'To-Do List' }, { id: 'venues', icon: <MapPin className="w-6 h-6"/>, label: 'Venues' }, { id: 'vendors', icon: <Briefcase className="w-6 h-6"/>, label: 'Vendors' }, { id: 'ai-scout', icon: <Sparkles className="w-6 h-6"/>, label: 'AI Venue Scout' }, ]; return ( <nav className="w-20 lg:w-64 bg-white dark:bg-gray-800 shadow-lg flex flex-col justify-between"> <div> <div className="flex items-center justify-center lg:justify-start p-4 lg:p-6 border-b border-gray-200 dark:border-gray-700"> <Heart className="text-pink-500 w-8 h-8" /> <h1 className="hidden lg:block ml-4 text-xl font-bold text-pink-500">Wedding Planner</h1> </div> <ul> {navItems.map(item => ( <li key={item.id} className="mt-2"> <a href="#" onClick={(e) => { e.preventDefault(); setActiveTab(item.id); }} className={`flex items-center justify-center lg:justify-start p-4 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900 hover:text-pink-500 transition-colors duration-200 ${activeTab === item.id ? 'bg-pink-100 dark:bg-pink-900/50 text-pink-500 border-r-4 border-pink-500' : ''}`}> {item.icon} <span className="hidden lg:block ml-4">{item.label}</span> </a> </li> ))} </ul> </div> <div className="p-4 border-t border-gray-200 dark:border-gray-700"> <p className="text-xs text-gray-500 dark:text-gray-400 truncate hidden lg:block">Session ID:</p> <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{userId}</p> </div> </nav> ); };
 //AIVenueScout works with this code. DO NOT CHANGE! Has not been deployed yet as of 10-4-2025. Waiting until more features are implemented/fixed.
 const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
   const { query, results, isLoading, error } = cache;
