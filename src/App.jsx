@@ -3,18 +3,35 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Check } from 'lucide-react';
+import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Check, Palette } from 'lucide-react';
 import WeddingSimulator from './components/WeddingSimulator';
+
+const GEMINI_API_KEY = "AIzaSyBEzh4YErzlz5m1J2eM8zhTbNhkjUR7_v0";
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_API_KEY,
-    authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_APP_ID
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
+
+// --- Initialize Firebase outside of the component ---
+// This code runs once when the app first loads.
+let app, auth, db;
+try {
+    if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+    } else {
+        console.warn("Firebase config is missing or incomplete. Check your .env file or Netlify environment variables.");
+    }
+} catch (error) {
+    console.error("Firebase initialization error:", error);
+}
 
 // --- Main App Component ---
 const App = () => {
@@ -42,42 +59,32 @@ const App = () => {
     const [dreamWedding, setDreamWedding] = useState({});
 
     // --- Firebase State ---
-    const [db, setDb] = useState(null);
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [seatingPlan, setSeatingPlan] = useState({
         'Table 1': [], 'Table 2': [], 'Table 3': [], 'Table 4': [],
     });
 
-    // --- Firebase Initialization and Auth ---
+    // --- Firebase Auth Listener ---
     useEffect(() => {
-        if (firebaseConfig.apiKey && firebaseConfig.projectId) {
-            try {
-                const app = initializeApp(firebaseConfig);
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
-                setDb(dbInstance);
-                const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-                    if (user) { 
-                        setUserId(user.uid); 
-                    } else { 
-                        try { 
-                            await signInAnonymously(authInstance); 
-                        } catch (error) { 
-                            console.error("Firebase Anonymous auth error:", error); 
-                        } 
-                    }
-                    setIsAuthReady(true);
-                });
-                return () => unsubscribe();
-            } catch (error) {
-                console.error("Firebase initialization error:", error);
-                setIsAuthReady(true);
-            }
-        } else {
-            console.warn("Firebase config is missing or incomplete. App will run without backend features.");
+        if (!auth) {
+            console.error("Firebase Auth is not initialized.");
             setIsAuthReady(true);
+            return;
         }
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                setUserId(user.uid);
+            } else {
+                try {
+                    await signInAnonymously(auth);
+                } catch (error) {
+                    console.error("Firebase Anonymous auth error:", error);
+                }
+            }
+            setIsAuthReady(true);
+        });
+        return () => unsubscribe();
     }, []);
 
     // --- Data Fetching and Saving ---
@@ -101,7 +108,7 @@ const App = () => {
             console.error("Firebase onSnapshot error:", error);
         });
         return () => unsubscribe();
-    }, [isAuthReady, db, userId, appMode]);
+    }, [isAuthReady, userId, appMode]);
 
     const handleDataUpdate = async (newData, mode = appMode, options = { merge: true }) => {
         if (!isAuthReady || !db || !userId) return;
@@ -116,8 +123,6 @@ const App = () => {
         }
     };
     
-    // In App.jsx
-
     const startWeddingPlanning = async (dreamData = null) => {
         let initialWeddingData = {
             weddingDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
@@ -127,32 +132,13 @@ const App = () => {
             venues: [],
             vendors: [],
         };
-
         if (dreamData) {
             initialWeddingData.budget.estimated = dreamData.budget;
-
-            const budgetTodo = {
-                id: new Date().getTime(),
-                task: 'Create initial wedding budget',
-                completed: true,
-                dueDate: new Date().toISOString().split('T')[0]
-            };
-
-            const themeTodo = {
-                id: new Date().getTime() + 1,
-                task: `Find vendors that match our "${dreamData.theme}" theme!`,
-                completed: false,
-                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-            };
-            
+            const budgetTodo = { id: new Date().getTime(), task: 'Create initial wedding budget', completed: true, dueDate: new Date().toISOString().split('T')[0] };
+            const themeTodo = { id: new Date().getTime() + 1, task: `Find vendors that match our "${dreamData.theme}" theme!`, completed: false, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] };
             initialWeddingData.todoList.unshift(budgetTodo, themeTodo);
         }
-        
-        // ✅ FIX: First, AWAIT the database operation to complete.
-        // We pass { merge: false } to ensure we are overwriting any old plan completely.
         await handleDataUpdate(initialWeddingData, 'planning', { merge: false });
-        
-        // ✅ FIX: THEN, switch the app mode.
         setAppMode('planning');
     };
     
@@ -166,10 +152,13 @@ const App = () => {
     const handleBudgetChange = (e) => { const updatedData = { ...weddingData, budget: { ...weddingData.budget, estimated: parseFloat(e.target.value) || 0 } }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); }
     const toggleTodoCompletion = (id) => { const updatedTodos = weddingData.todoList.map(todo => todo.id === id ? { ...todo, completed: !todo.completed } : todo ); const updatedData = { ...weddingData, todoList: updatedTodos }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); };
     const handleSaveVenueFromScout = (venue) => { const newVenue = { id: new Date().getTime(), name: venue.name, location: venue.location, notes: `Aesthetic: ${venue.aesthetic_description || 'N/A'}.`, price: venue.estimated_price, capacity: '', website: venue.website_url || '', imageUrl: venue.image_url || '' }; const updatedData = { ...weddingData, venues: [...(weddingData.venues || []), newVenue] }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); setActiveTab('venues'); };
-    const handleGenerateTasks = async () => { setIsGeneratingTasks(true); const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Return the response as a valid JSON array of objects. Each object must have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated relative to the wedding date. Create at least 15 tasks. Ensure the entire response is only the JSON array, with no extra text or markdown formatting. IMPORTANT: Your entire response must be only the raw JSON text. Do not include any introductory phrases like "Here is the JSON" or markdown code fences like \`\`\`json.`; const payload = { prompt }; try { const response = await fetch('/.netlify/functions/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) { throw new Error(`API call failed with status: ${response.status}`); } const result = await response.json(); const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text; if (generatedText) { const startIndex = generatedText.indexOf('['); const endIndex = generatedText.lastIndexOf(']'); if (startIndex !== -1 && endIndex !== -1) { const jsonString = generatedText.substring(startIndex, endIndex + 1); const newTasks = JSON.parse(jsonString); const formattedTasks = newTasks.map((task, index) => ({ id: new Date().getTime() + index, task: task.task, dueDate: task.dueDate, completed: false })); const newTodoList = [...(weddingData.todoList || []), ...formattedTasks]; const updatedWeddingData = { ...weddingData, todoList: newTodoList }; setWeddingData(updatedWeddingData); handleDataUpdate(updatedWeddingData, 'planning'); } else { throw new Error("Valid JSON array not found in AI response."); } } else { throw new Error("AI returned no text."); } } catch (error) { console.error("Error generating tasks:", error); } finally { setIsGeneratingTasks(false); } };
+    const handleGenerateTasks = async () => { setIsGeneratingTasks(true); const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Return the response as a valid JSON array of objects. Each object must have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated relative to the wedding date. Create at least 15 tasks. Ensure the entire response is only the JSON array, with no extra text or markdown formatting. IMPORTANT: Your entire response must be only the raw JSON text. Do not include any introductory phrases like "Here is the JSON" or markdown code fences like \`\`\`json.`; const payload = { prompt }; try { const response = await fetch('/.netlify/functions/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) { throw new Error(`API call failed`); } const result = await response.json(); const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text; if (generatedText) { const jsonString = generatedText.substring(generatedText.indexOf('['), generatedText.lastIndexOf(']') + 1); const newTasks = JSON.parse(jsonString); const formattedTasks = newTasks.map((task, index) => ({ id: new Date().getTime() + index, task: task.task, dueDate: task.dueDate, completed: false })); const updatedWeddingData = { ...weddingData, todoList: [...(weddingData.todoList || []), ...formattedTasks] }; setWeddingData(updatedWeddingData); handleDataUpdate(updatedWeddingData, 'planning'); } else { throw new Error("AI returned no text."); } } catch (error) { console.error("Error generating tasks:", error); } finally { setIsGeneratingTasks(false); } };
+    
+    // --- Memoized Calculations ---
     const dashboardStats = useMemo(() => { const { weddingDate, guestList, budget, todoList } = weddingData; const today = new Date(); const wDate = new Date(weddingDate); const countdown = Math.ceil((wDate - today) / (1000 * 60 * 60 * 24)); const guestsAttending = (guestList || []).filter(g => g.status === 'Attending').length; const totalGuests = (guestList || []).length; const actualSpending = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0); const tasksCompleted = (todoList || []).filter(t => t.completed).length; const totalTasks = (todoList || []).length; return { countdown, guestsAttending, totalGuests, actualSpending, estimatedBudget: budget.estimated, tasksCompleted, totalTasks }; }, [weddingData]);
     const budgetChartData = useMemo(() => { const { expenses } = weddingData.budget; if (!expenses || expenses.length === 0) return []; const categoryTotals = expenses.reduce((acc, expense) => { const category = expense.category || 'Uncategorized'; acc[category] = (acc[category] || 0) + (parseFloat(expense.actual) || 0); return acc; }, {}); return Object.entries(categoryTotals).map(([name, value]) => ({ name, value })); }, [weddingData.budget.expenses]);
 
+    // --- Content Renderer for 'planning' mode ---
     const renderContent = () => {
         switch (activeTab) {
             case 'dashboard': return <Dashboard stats={dashboardStats} weddingDate={weddingData.weddingDate} onDateChange={handleWeddingDateChange} budgetChartData={budgetChartData} />;
@@ -226,7 +215,7 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
     const payload = { prompt };
 
     try {
-      const response = await fetch('/.netlify/functions/generate', {
+      const response = await fetch('/netlify/functions/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
