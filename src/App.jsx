@@ -6,8 +6,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Calendar, Users, DollarSign, List, Grid, MapPin, Briefcase, Plus, Trash2, Edit, Save, X, Sun, Sparkles, Heart, Link as LinkIcon, Image as ImageIcon, Gift, Wand2, Check, Palette } from 'lucide-react';
 import WeddingSimulator from './components/WeddingSimulator';
 
-const GEMINI_API_KEY = "AIzaSyBEzh4YErzlz5m1J2eM8zhTbNhkjUR7_v0";
-
 // --- Firebase Configuration ---
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -152,8 +150,49 @@ const App = () => {
     const handleBudgetChange = (e) => { const updatedData = { ...weddingData, budget: { ...weddingData.budget, estimated: parseFloat(e.target.value) || 0 } }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); }
     const toggleTodoCompletion = (id) => { const updatedTodos = weddingData.todoList.map(todo => todo.id === id ? { ...todo, completed: !todo.completed } : todo ); const updatedData = { ...weddingData, todoList: updatedTodos }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); };
     const handleSaveVenueFromScout = (venue) => { const newVenue = { id: new Date().getTime(), name: venue.name, location: venue.location, notes: `Aesthetic: ${venue.aesthetic_description || 'N/A'}.`, price: venue.estimated_price, capacity: '', website: venue.website_url || '', imageUrl: venue.image_url || '' }; const updatedData = { ...weddingData, venues: [...(weddingData.venues || []), newVenue] }; setWeddingData(updatedData); handleDataUpdate(updatedData, 'planning'); setActiveTab('venues'); };
-    const handleGenerateTasks = async () => { setIsGeneratingTasks(true); const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Return the response as a valid JSON array of objects. Each object must have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated relative to the wedding date. Create at least 15 tasks. Ensure the entire response is only the JSON array, with no extra text or markdown formatting. IMPORTANT: Your entire response must be only the raw JSON text. Do not include any introductory phrases like "Here is the JSON" or markdown code fences like \`\`\`json.`; const payload = { prompt }; try { const response = await fetch('/.netlify/functions/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) { throw new Error(`API call failed`); } const result = await response.json(); const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text; if (generatedText) { const jsonString = generatedText.substring(generatedText.indexOf('['), generatedText.lastIndexOf(']') + 1); const newTasks = JSON.parse(jsonString); const formattedTasks = newTasks.map((task, index) => ({ id: new Date().getTime() + index, task: task.task, dueDate: task.dueDate, completed: false })); const updatedWeddingData = { ...weddingData, todoList: [...(weddingData.todoList || []), ...formattedTasks] }; setWeddingData(updatedWeddingData); handleDataUpdate(updatedWeddingData, 'planning'); } else { throw new Error("AI returned no text."); } } catch (error) { console.error("Error generating tasks:", error); } finally { setIsGeneratingTasks(false); } };
-    
+    const handleGenerateTasks = async () => {
+        setIsGeneratingTasks(true);
+        const prompt = `You are an expert wedding planner. Based on a wedding date of ${weddingData.weddingDate}, generate a comprehensive list of to-do items for planning a wedding. Return the response as a valid JSON array of objects. Each object must have a 'task' (string) and a 'dueDate' (string in 'YYYY-MM-DD' format) property. The 'dueDate' should be calculated relative to the wedding date. Create at least 15 tasks. Ensure the entire response is only the JSON array, with no extra text or markdown formatting. IMPORTANT: Your entire response must be only the raw JSON text. Do not include any introductory phrases like "Here is the JSON" or markdown code fences like \`\`\`json.`; // The prompt text is unchanged
+
+        // This payload now just contains the prompt
+        const payload = { prompt };
+
+        try {
+            // It now calls your secure Netlify function
+            const response = await fetch('/.netlify/functions/generate', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(payload) 
+            });
+
+            if (!response.ok) { 
+                throw new Error(`API call failed`); 
+            }
+            const result = await response.json();
+            const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (generatedText) {
+                // The parsing logic is now safer
+                const jsonString = generatedText.substring(generatedText.indexOf('['), generatedText.lastIndexOf(']') + 1);
+                const newTasks = JSON.parse(jsonString);
+                const formattedTasks = newTasks.map((task, index) => ({ 
+                    id: new Date().getTime() + index, 
+                    task: task.task, 
+                    dueDate: task.dueDate, 
+                    completed: false 
+                }));
+                const updatedWeddingData = { ...weddingData, todoList: [...(weddingData.todoList || []), ...formattedTasks] };
+                setWeddingData(updatedWeddingData);
+                handleDataUpdate(updatedWeddingData, 'planning');
+            } else { 
+                throw new Error("AI returned no text."); 
+            }
+        } catch (error) {
+            console.error("Error generating tasks:", error);
+        } finally {
+            setIsGeneratingTasks(false);
+        }
+    };
     // --- Memoized Calculations ---
     const dashboardStats = useMemo(() => { const { weddingDate, guestList, budget, todoList } = weddingData; const today = new Date(); const wDate = new Date(weddingDate); const countdown = Math.ceil((wDate - today) / (1000 * 60 * 60 * 24)); const guestsAttending = (guestList || []).filter(g => g.status === 'Attending').length; const totalGuests = (guestList || []).length; const actualSpending = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0); const tasksCompleted = (todoList || []).filter(t => t.completed).length; const totalTasks = (todoList || []).length; return { countdown, guestsAttending, totalGuests, actualSpending, estimatedBudget: budget.estimated, tasksCompleted, totalTasks }; }, [weddingData]);
     const budgetChartData = useMemo(() => { const { expenses } = weddingData.budget; if (!expenses || expenses.length === 0) return []; const categoryTotals = expenses.reduce((acc, expense) => { const category = expense.category || 'Uncategorized'; acc[category] = (acc[category] || 0) + (parseFloat(expense.actual) || 0); return acc; }, {}); return Object.entries(categoryTotals).map(([name, value]) => ({ name, value })); }, [weddingData.budget.expenses]);
@@ -210,12 +249,12 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
 
     // ✨ PROMPT OPTIMIZED FOR SPEED ✨
     // This prompt is more direct and machine-readable, resulting in a faster response.
-    const prompt = `Find 5 wedding venues near "${query.location}" for a budget under $${query.budget}. IMPORTANT: Respond with only a valid JSON object. The JSON object must have a single root key "venues", which is an array of objects. Each venue object in the array must include these exact keys: "name" (string), "location" (string), "aesthetic_description" (string), "estimated_price" (number), "website_url" (string), and "image_url" (string, must be a direct hotlink to a .jpg, .png, or .webp file). Do not include any text, titles, or markdown before or after the JSON object.`;
+    const prompt = `Find 3 wedding venues near "${query.location}" for a budget under $${query.budget}. IMPORTANT: Respond with only a valid JSON object. The JSON object must have a single root key "venues", which is an array of objects. Each venue object in the array must include these exact keys: "name" (string), "location" (string), "aesthetic_description" (string), "estimated_price" (number), "website_url" (string), and "image_url" (string, must be a direct hotlink to a .jpg, .png, or .webp file). Do not include any text, titles, or markdown before or after the JSON object.`;
 
     const payload = { prompt };
 
     try {
-      const response = await fetch('/netlify/functions/generate', {
+      const response = await fetch('/.netlify/functions/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -310,7 +349,53 @@ const AIVenueScout = ({ onSaveVenue, cache, setCache }) => {
 };
 const Dashboard = ({ stats, weddingDate, onDateChange, budgetChartData }) => ( <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"> <div className="lg:col-span-4"> <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Your Wedding Dashboard</h1> <p className="text-gray-600 dark:text-gray-400">Here's a snapshot of your wedding planning progress.</p> </div> <StatCard title="Days Until Wedding" value={stats.countdown > 0 ? stats.countdown : "Congratulations!"} icon={<Calendar />} /> <StatCard title="Guests Attending" value={`${stats.guestsAttending} / ${stats.totalGuests}`} icon={<Users />} /> <StatCard title="Budget Spent" value={`$${stats.actualSpending.toLocaleString()} / $${stats.estimatedBudget.toLocaleString()}`} icon={<DollarSign />} /> <StatCard title="Tasks Completed" value={`${stats.tasksCompleted} / ${stats.totalTasks}`} icon={<List />} /> <div className="md:col-span-2 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">Set Your Wedding Date</h2> <input type="date" value={weddingDate} onChange={onDateChange} className="w-full p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600" /> </div> <div className="md:col-span-2 lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col"> <h2 className="text-xl font-semibold text-gray-700 dark:text-white mb-4">Budget Breakdown</h2> {budgetChartData.length > 0 ? ( <ResponsiveContainer width="100%" height={200}> <PieChart> <Pie data={budgetChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label> {budgetChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={['#f472b6', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6'][index % 5]} />)} </Pie> <Tooltip /> </PieChart> </ResponsiveContainer> ) : ( <div className="flex-grow flex items-center justify-center h-full text-gray-500"> Add expenses to see a breakdown. </div> )} </div> </div> );
 const StatCard = ({ title, value, icon }) => ( <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-center"> <div className="p-3 bg-pink-100 dark:bg-pink-900/50 rounded-full text-pink-500 mr-4"> {icon} </div> <div> <p className="text-sm text-gray-600 dark:text-gray-400">{title}</p> <p className="text-2xl font-bold text-gray-800 dark:text-white">{value}</p> </div> </div> );
-const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, renderRow, onGenerateTasks, isGeneratingTasks }) => ( <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <div className="flex justify-between items-center mb-4"> <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h1> <div className="flex items-center space-x-2"> {onGenerateTasks && ( <button onClick={onGenerateTasks} disabled={isGeneratingTasks} className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300"> {isGeneratingTasks ? ( <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Generating...</> ) : ( <><Sparkles size={16} className="mr-2"/> Suggest Tasks</> )} </button> )} <button onClick={onAdd} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 flex items-center"> <Plus size={16} className="mr-2"/> Add New </button> </div> </div> <div className="overflow-x-auto"> <table className="w-full text-left text-gray-600 dark:text-gray-400"> <thead className="bg-gray-50 dark:bg-gray-700"> <tr> {columns.map(col => <th key={col.key} className="p-3 font-semibold">{col.label}</th>)} <th className="p-3 font-semibold">Actions</th> </tr> </thead> <tbody> {(items || []).length > 0 ? ( (items || []).map(item => ( <tr key={item.id} className="border-b dark:border-gray-700"> {renderRow(item)} <td className="p-3"> <button onClick={() => onEdit(item)} className="text-blue-500 hover:text-blue-700 mr-2"><Edit size={18}/></button> <button onClick={() => onDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button> </td> </tr> )) ) : ( <tr> <td colSpan={columns.length + 1} className="text-center p-4 text-gray-500"> No items yet. Click "Add New" to get started! </td> </tr> )} </tbody> </table> </div> </div> );
+const CrudSection = ({ title, items, columns, onAdd, onEdit, onDelete, renderRow, onGenerateTasks, isGeneratingTasks }) => (
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="flex justify-between items-center mb-4">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{title}</h1>
+            <div className="flex items-center space-x-2">
+                {onGenerateTasks && (
+                    <button onClick={onGenerateTasks} disabled={isGeneratingTasks} className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 flex items-center disabled:bg-purple-300">
+                        {isGeneratingTasks ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Generating...</>) : (<><Sparkles size={16} className="mr-2"/> Suggest Tasks</>)}
+                    </button>
+                )}
+                <button onClick={onAdd} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 flex items-center">
+                    <Plus size={16} className="mr-2"/> Add New
+                </button>
+            </div>
+        </div>
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-gray-600 dark:text-gray-400">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        {columns.map(col => <th key={col.key} className="p-3 font-semibold">{col.label}</th>)}
+                        <th className="p-3 font-semibold">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {(items || []).length > 0 ? (
+                        (items || []).map(item => (
+                            <tr key={item.id} className="border-b dark:border-gray-700">
+                                {/* --- THIS IS THE FIX --- */}
+                                {renderRow(item)}
+                                <td className="p-3">
+                                    <button onClick={() => onEdit(item)} className="text-blue-500 hover:text-blue-700 mr-2"><Edit size={18}/></button>
+                                    <button onClick={() => onDelete(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
+                                </td>
+                            </tr>
+                        ))
+                    ) : (
+                        <tr>
+                            <td colSpan={columns.length + 1} className="text-center p-4 text-gray-500">
+                                No items yet. Click "Add New" to get started!
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
 const GuestList = ({ guests, onAdd, onEdit, onDelete }) => { const columns = [ { key: 'name', label: 'Name'}, { key: 'group', label: 'Group' }, { key: 'status', label: 'Status' }, { key: 'notes', label: 'Notes' } ]; const getStatusColor = (status) => { switch (status) { case 'Attending': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'; case 'Declined': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'; default: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'; } }; return <CrudSection title="Guest List" items={guests} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} renderRow={guest => ( <> <td className="p-3">{guest.name}</td> <td className="p-3">{guest.group}</td> <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(guest.status)}`}>{guest.status}</span></td> <td className="p-3">{guest.notes}</td> </> )} />; };
 const Budget = ({ budget, onAddExpense, onEditExpense, onDeleteExpense, onBudgetChange }) => { const columns = [ { key: 'item', label: 'Item/Category'}, { key: 'estimated', label: 'Estimated Cost'}, { key: 'actual', label: 'Actual Cost'}, { key: 'vendor', label: 'Vendor'} ]; const totalEstimated = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.estimated) || 0), 0); const totalActual = (budget.expenses || []).reduce((acc, curr) => acc + (parseFloat(curr.actual) || 0), 0); return ( <div> <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6"> <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md"> <label className="block text-lg font-semibold text-gray-700 dark:text-white mb-2">Total Budget</label> <div className="flex items-center"> <span className="text-2xl font-bold mr-2 text-gray-800 dark:text-white">$</span> <input type="number" value={budget.estimated || ''} onChange={onBudgetChange} className="w-full text-2xl font-bold p-2 border rounded-md" /> </div> </div> <StatCard title="Est. Expenses" value={`$${totalEstimated.toLocaleString()}`} icon={<DollarSign />} /> <StatCard title="Actual Spending" value={`$${totalActual.toLocaleString()}`} icon={<DollarSign />} /> </div> <CrudSection title="Expenses" items={budget.expenses || []} columns={columns} onAdd={onAddExpense} onEdit={onEditExpense} onDelete={onDeleteExpense} renderRow={expense => ( <> <td className="p-3">{expense.item} ({expense.category})</td> <td className="p-3">${parseFloat(expense.estimated || 0).toLocaleString()}</td> <td className="p-3">${parseFloat(expense.actual || 0).toLocaleString()}</td> <td className="p-3">{expense.vendor}</td> </> )} /> </div> ); };
 const TodoList = ({ todos, onAdd, onEdit, onDelete, onToggle, onGenerateTasks, isGeneratingTasks }) => { const columns = [ { key: 'task', label: 'Task' }, { key: 'dueDate', label: 'Due Date' }, { key: 'status', label: 'Status' }]; return <CrudSection title="To-Do List" items={todos} columns={columns} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} onGenerateTasks={onGenerateTasks} isGeneratingTasks={isGeneratingTasks} renderRow={todo => ( <> <td className="p-3 flex items-center"> <input type="checkbox" checked={todo.completed} onChange={() => onToggle(todo.id)} className="mr-3 h-5 w-5 rounded border-gray-300 text-pink-600 focus:ring-pink-500" /> <span className={todo.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}>{todo.task}</span> </td> <td className="p-3">{todo.dueDate}</td> <td className="p-3">{todo.completed ? <span className="text-green-500">Completed</span> : <span className="text-yellow-500">Pending</span>}</td> </> )} />; };
