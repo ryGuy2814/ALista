@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wand2, Heart, Check, Trash2 } from 'lucide-react';
+import { Wand2, Heart, Check, Trash2, Palette } from 'lucide-react';
 import gardenBackground from '../assets/gardenBackground.png';
 import churchBackground from '../assets/churchBackground.png';
 
 const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
-    // FIX 1: Manage the dream state LOCALLY for instant UI updates.
     const [currentDream, setCurrentDream] = useState(dream);
     const [isGeneratingPalette, setIsGeneratingPalette] = useState(false);
-    const [savedPalettes, setSavedPalettes] = useState([]);
 
-    // FIX 1: Use an effect to sync local state if the initial prop changes.
     useEffect(() => {
         setCurrentDream(dream);
     }, [dream]);
@@ -27,9 +24,10 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
     
     const dreamWithDefaults = useMemo(() => ({
         theme: currentDream?.theme || 'Modern Romantic',
-        palette: currentDream?.palette || ['#F7CAC9'],
+        palette: currentDream?.palette || ['#F7CAC9', '#E2E8F0', '#94A3B8', '#475569', '#1E293B'],
         budget: currentDream?.budget ?? 25000,
-        styles: { ...defaultStyles, ...(currentDream?.styles || {}) }
+        styles: { ...defaultStyles, ...(currentDream?.styles || {}) },
+        savedPalettes: currentDream?.savedPalettes || []
     }), [currentDream]);
 
     const themes = [
@@ -72,25 +70,28 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
         setCurrentDream(newDreamState); 
         onUpdate(newDreamState, 'simulator'); 
     };
+
     const handleStyleUpdate = (styleField, value) => {
         const newStyles = { ...dreamWithDefaults.styles, [styleField]: value };
         handleUpdate({ ...dreamWithDefaults, styles: newStyles });
     };
 
-    const handleColorSelectAndGenerate = async (baseColor, currentThemeName) => {
-        if (!currentThemeName) {
-            console.error("Theme is not defined. Aborting AI call.");
-            return; 
+    const handleBaseColorChange = (newColor) => {
+        const newPalette = [newColor, ...dreamWithDefaults.palette.slice(1)];
+        handleUpdate({ ...dreamWithDefaults, palette: newPalette });
+    };
+
+    const handleGeneratePalette = async () => {
+        const baseColor = dreamWithDefaults.palette[0];
+        const currentThemeName = dreamWithDefaults.theme;
+        
+        if (!currentThemeName || !baseColor) {
+            console.error("Theme or base color is not defined.");
+            return;
         }
 
         setIsGeneratingPalette(true);
-        const initialUpdate = { ...dreamWithDefaults, theme: currentThemeName, palette: [baseColor] };
-        handleUpdate(initialUpdate);
-
         const prompt = `You are an expert wedding color palette designer. Based on the primary color "${baseColor}" for a "${currentThemeName}" themed wedding, generate a complementary FIVE-COLOR palette. The palette should consist of: the primary base color, a secondary color, two different accent colors, and one neutral color. Return the response as a valid JSON object with a single key "palette", which is an array of EXACTLY 5 hex color code strings. The first color in the array must be the provided base color. IMPORTANT: Your entire response must be only the raw JSON text. Do not include any introductory phrases or markdown.`;
-        
-        // ✅ THIS IS THE FIX.
-        // Change the payload to the simple format your backend expects.
         const payload = { prompt };
 
         try {
@@ -103,7 +104,6 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
             if (!response.ok) throw new Error(`API call failed: ${response.statusText}`);
             
             const result = await response.json();
-            // The rest of the function remains the same...
             const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (!rawText) throw new Error("AI returned an empty response.");
@@ -116,23 +116,52 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
             const newPalette = JSON.parse(jsonString).palette;
             
             if (Array.isArray(newPalette) && newPalette.length > 0) {
-                const finalUpdate = { ...initialUpdate, palette: newPalette, styles: { ...initialUpdate.styles, bridesmaidColor: newPalette[1] || initialUpdate.styles.bridesmaidColor, groomSuit: newPalette[4] || initialUpdate.styles.groomSuit }};
+                const finalUpdate = { ...dreamWithDefaults, palette: newPalette, styles: { ...dreamWithDefaults.styles, bridesmaidColor: newPalette[1] || dreamWithDefaults.styles.bridesmaidColor, groomSuit: newPalette[4] || dreamWithDefaults.styles.groomSuit }};
                 handleUpdate(finalUpdate);
             } else { 
                 throw new Error("Parsed data did not contain a valid palette.");
             }
         } catch (error) {
             console.error("Error generating palette:", error);
-            handleUpdate({ ...initialUpdate, palette: [baseColor, '#e2e8f0', '#94a3b8', '#475569', '#1e293b']});
+            const fallbackPalette = [baseColor, '#e2e8f0', '#94a3b8', '#475569', '#1e293b'];
+            handleUpdate({ ...dreamWithDefaults, palette: fallbackPalette });
         } finally {
             setIsGeneratingPalette(false);
         }
     };
 
-    const handleThemeSelect = (selectedTheme) => { handleColorSelectAndGenerate(selectedTheme.color, selectedTheme.name); };
-    const handleSavePalette = () => { setSavedPalettes(prev => { const isSaved = prev.some(p => JSON.stringify(p) === JSON.stringify(dreamWithDefaults.palette)); return isSaved ? prev : [...prev, dreamWithDefaults.palette]; }); };
-    const handleApplyPalette = (palette) => { const newStyles = { ...dreamWithDefaults.styles, bridesmaidColor: palette[1] || dreamWithDefaults.styles.bridesmaidColor, groomSuit: palette[4] || dreamWithDefaults.styles.groomSuit, }; handleUpdate({ ...dreamWithDefaults, palette: palette, styles: newStyles }); };
-    const handleDeletePalette = (paletteToDelete) => { setSavedPalettes(prev => prev.filter(p => JSON.stringify(p) !== JSON.stringify(paletteToDelete))); };
+    const handleThemeSelect = (selectedTheme) => { 
+        const newPalette = [selectedTheme.color, ...dreamWithDefaults.palette.slice(1)];
+        handleUpdate({ ...dreamWithDefaults, theme: selectedTheme.name, palette: newPalette });
+    };
+
+    // UPDATED: Now saves a palette OBJECT, not just an array.
+    const handleSavePalette = () => {
+        const currentPalettes = dreamWithDefaults.savedPalettes || [];
+        const isSaved = currentPalettes.some(p => JSON.stringify(p.colors) === JSON.stringify(dreamWithDefaults.palette));
+        if (!isSaved) {
+            const newSavedPalette = {
+                id: new Date().getTime(), // Add a unique ID for React keys
+                colors: dreamWithDefaults.palette
+            };
+            const updatedPalettes = [...currentPalettes, newSavedPalette];
+            handleUpdate({ ...dreamWithDefaults, savedPalettes: updatedPalettes });
+        }
+    };
+    
+    // UPDATED: Applies the `colors` array from the saved palette object.
+    const handleApplyPalette = (paletteToApply) => {
+        const colors = paletteToApply.colors;
+        const newStyles = { ...dreamWithDefaults.styles, bridesmaidColor: colors[1] || dreamWithDefaults.styles.bridesmaidColor, groomSuit: colors[4] || dreamWithDefaults.styles.groomSuit, }; 
+        handleUpdate({ ...dreamWithDefaults, palette: colors, styles: newStyles }); 
+    };
+    
+    // UPDATED: Deletes a palette object by its unique `id`.
+    const handleDeletePalette = (paletteToDelete) => {
+        const currentPalettes = dreamWithDefaults.savedPalettes || [];
+        const updatedPalettes = currentPalettes.filter(p => p.id !== paletteToDelete.id);
+        handleUpdate({ ...dreamWithDefaults, savedPalettes: updatedPalettes });
+    };
 
     return (
         <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 font-sans text-gray-800 dark:text-gray-200">
@@ -160,9 +189,18 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                         <h2 className="text-xl font-semibold mb-4">2. Pick a Primary Color</h2>
-                        <div className="flex items-center gap-4">
-                            <input type="color" value={dreamWithDefaults.palette[0] || '#ffffff'} onInput={(e) => handleColorSelectAndGenerate(e.target.value, dreamWithDefaults.theme)} className="w-16 h-16 p-0 border-none rounded-lg cursor-pointer disabled:opacity-50" disabled={isGeneratingPalette}/>
-                            {isGeneratingPalette ? (<div className="flex items-center text-gray-500"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500 mr-2"></div>Generating...</div>) : (<p className="text-gray-500 dark:text-gray-400">Select a color for AI suggestions!</p>)}
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center gap-4">
+                               <input type="color" value={dreamWithDefaults.palette[0] || '#ffffff'} onInput={(e) => handleBaseColorChange(e.target.value)} className="w-16 h-16 p-0 border-none rounded-lg cursor-pointer"/>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Choose a base color, then generate a palette.</p>
+                            </div>
+                            <button onClick={handleGeneratePalette} disabled={isGeneratingPalette} className="w-full flex items-center justify-center gap-2 bg-purple-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-600 transition-colors disabled:bg-purple-300">
+                                {isGeneratingPalette ? (
+                                    <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div><span>Generating...</span></>
+                                ) : (
+                                    <><Palette size={20} /><span>Generate Palette</span></>
+                                )}
+                            </button>
                         </div>
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
@@ -186,7 +224,8 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
                     </div>
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                         <h2 className="text-xl font-semibold mb-4">Saved Color Schemes</h2>
-                        <div className="max-h-48 overflow-y-auto pr-2 space-y-3">{savedPalettes.length === 0 ? (<p className="text-gray-500 dark:text-gray-400 text-sm">Your saved palettes will appear here.</p>) : (savedPalettes.map((palette) => (<div key={JSON.stringify(palette)} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50"><div className="flex items-center space-x-2">{palette.map((color, cIndex) => (<div key={cIndex} className="w-6 h-6 rounded-full border border-gray-300 dark:border-gray-600" style={{ backgroundColor: color }}></div>))}</div><div className="flex items-center space-x-2"><button onClick={() => handleApplyPalette(palette)} title="Apply Palette" className="p-1 text-green-600 hover:text-green-500"><Check size={18} /></button><button onClick={() => handleDeletePalette(palette)} title="Delete Palette" className="p-1 text-red-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>)))}</div>
+                        {/* UPDATED: Maps over the new array of objects. */}
+                        <div className="max-h-48 overflow-y-auto pr-2 space-y-3">{dreamWithDefaults.savedPalettes.length === 0 ? (<p className="text-gray-500 dark:text-gray-400 text-sm">Your saved palettes will appear here.</p>) : (dreamWithDefaults.savedPalettes.map((savedPalette) => (<div key={savedPalette.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50"><div className="flex items-center space-x-2">{savedPalette.colors.map((color, cIndex) => (<div key={cIndex} className="w-6 h-6 rounded-full border border-gray-300 dark:border-gray-600" style={{ backgroundColor: color }}></div>))}</div><div className="flex items-center space-x-2"><button onClick={() => handleApplyPalette(savedPalette)} title="Apply Palette" className="p-1 text-green-600 hover:text-green-500"><Check size={18} /></button><button onClick={() => handleDeletePalette(savedPalette)} title="Delete Palette" className="p-1 text-red-600 hover:text-red-500"><Trash2 size={18} /></button></div></div>)))}</div>
                     </div>
                 </div>
 
@@ -246,65 +285,9 @@ const WeddingSimulator = ({ dream, onUpdate, onComplete }) => {
 };
 
 // --- HELPER & SVG COMPONENTS ---
-
-const BudgetGauge = ({ currentValue, maxValue }) => {
-    const percentage = maxValue > 0 ? Math.min((currentValue / maxValue) * 100, 100) : 0;
-    let barColor = 'bg-green-500';
-    if (percentage > 75) barColor = 'bg-yellow-500';
-    if (percentage > 95) barColor = 'bg-red-500';
-
-    return (
-        <div className="mt-4">
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
-                <div className={`${barColor} h-4 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
-            </div>
-        </div>
-    );
-};
-
-const BrideIcon = ({ dressStyle, hasVeil }) => (
-    <div className="flex flex-col items-center">
-        <svg width="70" height="192" viewBox="0 0 70 192" fill="none" xmlns="http://www.w3.org/2000/svg" className="transform scale-110">
-            {hasVeil && <path d="M18 17C18 7.61116 25.6112 0 35 0C44.3888 0 52 7.61116 52 17V80L35 90L18 80V17Z" fill="rgba(255, 255, 255, 0.5)" />}
-            <path d="M35 0C44.3888 0 52 7.61116 52 17C52 26.3888 44.3888 34 35 34C25.6112 34 18 26.3888 18 17C18 7.61116 25.6112 0 35 0Z" fill="#e0ac93"/>
-            <path d="M12 42H58L70 192H0L12 42Z" fill="white"/>
-            {dressStyle === 'V-Neck' && <path d="M35 42L22 62H48L35 42Z" fill="#e0ac93" />}
-            {dressStyle === 'Sweetheart' && <path d="M35 42C30 42 25 48 25 52C25 56 30 54 35 50C40 54 45 56 45 52C45 48 40 42 35 42Z" fill="#e0ac93" />}
-            {dressStyle === 'Strapless' && <path d="M22 42H48V50H22V42Z" fill="#e0ac93" />}
-        </svg>
-       <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-1">Bride ({dressStyle})</p>
-    </div>
-);
-
-const GroomIcon = ({ suitColor, accessory, shoeColor }) => (
-    <div className="flex flex-col items-center">
-        <svg width="64" height="184" viewBox="0 0 64 184" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 0C40.8366 0 48 7.16344 48 16C48 24.8366 40.8366 32 32 32C23.1634 32 16 24.8366 16 16C16 7.16344 23.1634 0 32 0Z" fill="#e0ac93"/>
-            <rect x="4" y="174" width="22" height="10" rx="5" fill={shoeColor} />
-            <rect x="38" y="174" width="22" height="10" rx="5" fill={shoeColor} />
-            <path d="M12 40H52L60 104L32 176L4 104L12 40Z" fill={suitColor}/>
-            <path d="M12 40L32 64L52 40L32 48L12 40Z" fill="white"/>
-            {accessory === 'necktie' && <path d="M32 64L28 104H36L32 64Z" fill={suitColor === '#111827' ? '#6b7280' : '#111827'}/>}
-            {accessory === 'bowtie' && <path d="M24 62L32 68L40 62L40 74L32 68L24 74L24 62Z" fill={suitColor === '#111827' ? '#6b7280' : '#111827'} />}
-        </svg>
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-1">Groom</p>
-    </div>
-);
-
-const BridesmaidIcon = ({ dressColor, dressLength }) => (
-    <div className="flex flex-col items-center">
-        <svg width="56" height="160" viewBox="0 0 56 160" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M28 0C35.732 0 42 6.26801 42 14C42 21.732 35.732 28 28 28C20.268 28 14 21.732 14 14C14 6.26801 20.268 0 28 0Z" fill="#e0ac93"/>
-            <path d={dressLength === 'short' ? "M10 36H46L52 100H4L10 36Z" : "M10 36H46L56 160H0L10 36Z"} fill={dressColor} />
-            {dressLength === 'short' && (
-                <>
-                    <rect x="16" y="100" width="8" height="50" fill="#e0ac93" />
-                    <rect x="32" y="100" width="8" height="50" fill="#e0ac93" />
-                </>
-            )}
-        </svg>
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-1">Bridesmaid</p>
-    </div>
-);
+const BudgetGauge = ({ currentValue, maxValue }) => { const percentage = maxValue > 0 ? Math.min((currentValue / maxValue) * 100, 100) : 0; let barColor = 'bg-green-500'; if (percentage > 75) barColor = 'bg-yellow-500'; if (percentage > 95) barColor = 'bg-red-500'; return ( <div className="mt-4"> <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4"> <div className={`${barColor} h-4 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div> </div> </div> ); };
+const BrideIcon = ({ dressStyle, hasVeil }) => ( <div className="flex flex-col items-center"> <svg width="70" height="192" viewBox="0 0 70 192" fill="none" xmlns="http://www.w3.org/2000/svg" className="transform scale-110"> {hasVeil && <path d="M18 17C18 7.61116 25.6112 0 35 0C44.3888 0 52 7.61116 52 17V80L35 90L18 80V17Z" fill="rgba(255, 255, 255, 0.5)" />} <path d="M35 0C44.3888 0 52 7.61116 52 17C52 26.3888 44.3888 34 35 34C25.6112 34 18 26.3888 18 17C18 7.61116 25.6112 0 35 0Z" fill="#e0ac93"/> <path d="M12 42H58L70 192H0L12 42Z" fill="white"/> {dressStyle === 'V-Neck' && <path d="M35 42L22 62H48L35 42Z" fill="#e0ac93" />} {dressStyle === 'Sweetheart' && <path d="M35 42C30 42 25 48 25 52C25 56 30 54 35 50C40 54 45 56 45 52C45 48 40 42 35 42Z" fill="#e0ac93" />} {dressStyle === 'Strapless' && <path d="M22 42H48V50H22V42Z" fill="#e0ac93" />} </svg> <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-1">Bride ({dressStyle})</p> </div> );
+const GroomIcon = ({ suitColor, accessory, shoeColor }) => ( <div className="flex flex-col items-center"> <svg width="64" height="184" viewBox="0 0 64 184" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M32 0C40.8366 0 48 7.16344 48 16C48 24.8366 40.8366 32 32 32C23.1634 32 16 24.8366 16 16C16 7.16344 23.1634 0 32 0Z" fill="#e0ac93"/> <rect x="4" y="174" width="22" height="10" rx="5" fill={shoeColor} /> <rect x="38" y="174" width="22" height="10" rx="5" fill={shoeColor} /> <path d="M12 40H52L60 104L32 176L4 104L12 40Z" fill={suitColor}/> <path d="M12 40L32 64L52 40L32 48L12 40Z" fill="white"/> {accessory === 'necktie' && <path d="M32 64L28 104H36L32 64Z" fill={suitColor === '#111827' ? '#6b7280' : '#111827'}/>} {accessory === 'bowtie' && <path d="M24 62L32 68L40 62L40 74L32 68L24 74L24 62Z" fill={suitColor === '#111827' ? '#6b7280' : '#111827'} />} </svg> <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-1">Groom</p> </div> );
+const BridesmaidIcon = ({ dressColor, dressLength }) => ( <div className="flex flex-col items-center"> <svg width="56" height="160" viewBox="0 0 56 160" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M28 0C35.732 0 42 6.26801 42 14C42 21.732 35.732 28 28 28C20.268 28 14 21.732 14 14C14 6.26801 20.268 0 28 0Z" fill="#e0ac93"/> <path d={dressLength === 'short' ? "M10 36H46L52 100H4L10 36Z" : "M10 36H46L56 160H0L10 36Z"} fill={dressColor} /> {dressLength === 'short' && ( <> <rect x="16" y="100" width="8" height="50" fill="#e0ac93" /> <rect x="32" y="100" width="8" height="50" fill="#e0ac93" /> </> )} </svg> <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-1">Bridesmaid</p> </div> );
 
 export default WeddingSimulator;

@@ -1,14 +1,20 @@
 import React, { useMemo } from 'react';
 import { Plus, Minus, X } from 'lucide-react';
 
-// Sample data for our flower market
+import roseImg from '../assets/rose.jpg';
+import peonyImg from '../assets/peony.jpg';
+import tulipImg from '../assets/tulip.jpg';
+import dahliaImg from '../assets/dahlia.jpg';
+import eucalyptusImg from '../assets/eucalyptus.jpg';
+import lilyImg from '../assets/lily.jpg';
+
 const flowerMarket = [
-    { id: 'rose', name: 'Rose', price: 3.50, imageUrl: 'https://images.pexels.com/photos/39517/rose-flower-blossom-bloom-39517.jpeg?auto=compress&cs=tinysrgb&w=400' },
-    { id: 'peony', name: 'Peony', price: 6.00, imageUrl: 'https://images.pexels.com/photos/4144949/pexels-photo-4144949.jpeg?auto=compress&cs=tinysrgb&w=400' },
-    { id: 'tulip', name: 'Tulip', price: 2.75, imageUrl: 'https://images.pexels.com/photos/414029/pexels-photo-414029.jpeg?auto=compress&cs=tinysrgb&w=400' },
-    { id: 'dahlia', name: 'Dahlia', price: 4.50, imageUrl: 'https://images.pexels.com/photos/110469/pexels-photo-110469.jpeg?auto=compress&cs=tinysrgb&w=400' },
-    { id: 'eucalyptus', name: 'Eucalyptus', price: 1.50, imageUrl: 'https://images.pexels.com/photos/4057753/pexels-photo-4057753.jpeg?auto=compress&cs=tinysrgb&w=400' },
-    { id: 'lily', name: 'Lily', price: 5.50, imageUrl: 'https://images.pexels.com/photos/133472/pexels-photo-133472.jpeg?auto=compress&cs=tinysrgb&w=400' },
+    { id: 'rose', name: 'Rose', price: 3.50, imageUrl: roseImg },
+    { id: 'peony', name: 'Peony', price: 6.00, imageUrl: peonyImg },
+    { id: 'tulip', name: 'Tulip', price: 2.75, imageUrl: tulipImg },
+    { id: 'dahlia', name: 'Dahlia', price: 4.50, imageUrl: dahliaImg },
+    { id: 'eucalyptus', name: 'Eucalyptus', price: 1.50, imageUrl: eucalyptusImg },
+    { id: 'lily', name: 'Lily', price: 5.50, imageUrl: lilyImg },
 ];
 
 const BouquetBuilder = ({ florals, onUpdate }) => {
@@ -54,8 +60,10 @@ const BouquetBuilder = ({ florals, onUpdate }) => {
                         <div key={flower.id} className="relative border dark:border-gray-700 rounded-lg overflow-hidden group">
                             <img src={flower.imageUrl} alt={flower.name} className="w-full h-32 object-cover" />
                             <div className="p-2">
-                                <p className="font-semibold">{flower.name}</p>
-                                <p className="text-sm text-gray-500">${flower.price.toFixed(2)} / stem</p>
+                                {/* UPDATED: Made the flower name text higher contrast. */}
+                                <p className="font-semibold text-gray-800 dark:text-gray-100">{flower.name}</p>
+                                {/* UPDATED: Made the price text higher contrast. */}
+                                <p className="text-sm text-gray-600 dark:text-gray-300">${flower.price.toFixed(2)} / stem</p>
                             </div>
                             <button onClick={() => handleAddFlower(flower)} className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-all">
                                 <Plus className="w-10 h-10 text-white opacity-0 group-hover:opacity-100 transform group-hover:scale-110 transition-transform" />
@@ -74,8 +82,10 @@ const BouquetBuilder = ({ florals, onUpdate }) => {
                             <div className="flex items-center">
                                 <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-md object-cover mr-3"/>
                                 <div>
-                                    <p className="font-semibold">{item.name}</p>
-                                    <p className="text-sm text-gray-500">${item.price.toFixed(2)}</p>
+                                    {/* UPDATED: Made the flower name text higher contrast. */}
+                                    <p className="font-semibold text-gray-800 dark:text-gray-100">{item.name}</p>
+                                    {/* UPDATED: Made the price text higher contrast. */}
+                                    <p className="text-sm text-gray-600 dark:text-gray-300">${item.price.toFixed(2)}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">

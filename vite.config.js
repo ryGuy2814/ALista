@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    target: 'esnext' // This is the key setting to fix the import.meta warnings
+    target: 'esnext' // This setting ensures modern JavaScript features are supported
   }
 })
